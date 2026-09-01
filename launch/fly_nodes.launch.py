@@ -62,6 +62,18 @@ def generate_launch_description():
             # 查詢（use_poses=false），所以不會真的去查 TF，填預設值即可。
             "route_frame": "map",
             "base_frame": "base_link",
+
+            # 邊的代價函數。**一定要明寫**，因為 route_server 的預設只有
+            # DistanceScorer + DynamicEdgesScorer，不含 PenaltyScorer ——
+            # 也就是說地圖 metadata 裡的 penalty 欄位預設是「完全沒作用」的，
+            # 而且不會有任何警告（實測：只留 penalty 拿掉 speed_limit 的話，
+            # 預設設定下它照樣選最短的北道，penalty 20 完全被忽略）。
+            #   DistanceScorer 讀 metadata 的 speed_limit：成本 = 距離 / 速限
+            #   PenaltyScorer  讀 metadata 的 penalty    ：成本 += penalty
+            # 兩者的鍵名可以用 .speed_tag / .penalty_tag 改，這裡用預設值。
+            "edge_cost_functions": ["DistanceScorer", "PenaltyScorer"],
+            "DistanceScorer.plugin": "nav2_route::DistanceScorer",
+            "PenaltyScorer.plugin": "nav2_route::PenaltyScorer",
         }],
     )
 
