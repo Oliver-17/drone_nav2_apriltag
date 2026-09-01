@@ -1,0 +1,880 @@
+{
+  "type": "FeatureCollection",
+  "name": "nav2_arena",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 0,
+        "frame": "map",
+        "metadata": {
+          "description": "起飛點，南北兩道的分岔處"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -2.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 1,
+        "frame": "map",
+        "metadata": {
+          "description": "北道入口"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          0.0,
+          5.0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 2,
+        "frame": "map",
+        "metadata": {
+          "description": "北道束縮段（只剩 6 m 寬）"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          6.5,
+          5.0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 3,
+        "frame": "map",
+        "metadata": {
+          "description": "北道出口"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          13.0,
+          5.0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 4,
+        "frame": "map",
+        "metadata": {
+          "description": "南道入口"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1.0,
+          -6.5
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 5,
+        "frame": "map",
+        "metadata": {
+          "description": "南道中段（全寬 9 m）"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          6.5,
+          -6.5
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 6,
+        "frame": "map",
+        "metadata": {
+          "description": "南道出口"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          13.0,
+          -6.5
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 7,
+        "frame": "map",
+        "metadata": {
+          "description": "匯合點"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          15.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 8,
+        "frame": "map",
+        "metadata": {
+          "description": "斜走廊中段"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          20.0,
+          9.0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 9,
+        "frame": "map",
+        "metadata": {
+          "description": "斜走廊出口／空地入口"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          25.0,
+          14.0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 10,
+        "frame": "map",
+        "metadata": {
+          "description": "降落點，地面有 AprilTag"
+        },
+        "operations": {
+          "scan_apriltag": {
+            "type": "scan_apriltag",
+            "trigger": "NODE",
+            "metadata": {
+              "service_name": "/start_apriltag_scan"
+            }
+          }
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          27.0,
+          16.0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 100,
+        "startid": 0,
+        "endid": 1,
+        "overridable": true,
+        "cost": 5.385,
+        "metadata": {
+          "lane": "north",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              -2.0,
+              0.0
+            ],
+            [
+              0.0,
+              5.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 101,
+        "startid": 1,
+        "endid": 0,
+        "overridable": true,
+        "cost": 5.385,
+        "metadata": {
+          "lane": "north",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              0.0,
+              5.0
+            ],
+            [
+              -2.0,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 102,
+        "startid": 1,
+        "endid": 2,
+        "overridable": true,
+        "cost": 6.5,
+        "metadata": {
+          "lane": "north",
+          "speed_limit": 0.5,
+          "penalty": 20.0
+        },
+        "operations": {
+          "slow_in_pinch": {
+            "type": "slow_in_pinch",
+            "trigger": "ON_ENTER",
+            "metadata": {
+              "speed_limit": 0.5
+            }
+          }
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              0.0,
+              5.0
+            ],
+            [
+              6.5,
+              5.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 103,
+        "startid": 2,
+        "endid": 1,
+        "overridable": true,
+        "cost": 6.5,
+        "metadata": {
+          "lane": "north",
+          "speed_limit": 0.5,
+          "penalty": 20.0
+        },
+        "operations": {
+          "slow_in_pinch": {
+            "type": "slow_in_pinch",
+            "trigger": "ON_ENTER",
+            "metadata": {
+              "speed_limit": 0.5
+            }
+          }
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              6.5,
+              5.0
+            ],
+            [
+              0.0,
+              5.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 104,
+        "startid": 2,
+        "endid": 3,
+        "overridable": true,
+        "cost": 6.5,
+        "metadata": {
+          "lane": "north",
+          "speed_limit": 0.5,
+          "penalty": 20.0
+        },
+        "operations": {
+          "slow_in_pinch": {
+            "type": "slow_in_pinch",
+            "trigger": "ON_ENTER",
+            "metadata": {
+              "speed_limit": 0.5
+            }
+          }
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              6.5,
+              5.0
+            ],
+            [
+              13.0,
+              5.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 105,
+        "startid": 3,
+        "endid": 2,
+        "overridable": true,
+        "cost": 6.5,
+        "metadata": {
+          "lane": "north",
+          "speed_limit": 0.5,
+          "penalty": 20.0
+        },
+        "operations": {
+          "slow_in_pinch": {
+            "type": "slow_in_pinch",
+            "trigger": "ON_ENTER",
+            "metadata": {
+              "speed_limit": 0.5
+            }
+          }
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              13.0,
+              5.0
+            ],
+            [
+              6.5,
+              5.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 106,
+        "startid": 3,
+        "endid": 7,
+        "overridable": true,
+        "cost": 5.385,
+        "metadata": {
+          "lane": "north",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              13.0,
+              5.0
+            ],
+            [
+              15.0,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 107,
+        "startid": 7,
+        "endid": 3,
+        "overridable": true,
+        "cost": 5.385,
+        "metadata": {
+          "lane": "north",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              15.0,
+              0.0
+            ],
+            [
+              13.0,
+              5.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 108,
+        "startid": 0,
+        "endid": 4,
+        "overridable": true,
+        "cost": 7.159,
+        "metadata": {
+          "lane": "south",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              -2.0,
+              0.0
+            ],
+            [
+              1.0,
+              -6.5
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 109,
+        "startid": 4,
+        "endid": 0,
+        "overridable": true,
+        "cost": 7.159,
+        "metadata": {
+          "lane": "south",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              1.0,
+              -6.5
+            ],
+            [
+              -2.0,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 110,
+        "startid": 4,
+        "endid": 5,
+        "overridable": true,
+        "cost": 5.5,
+        "metadata": {
+          "lane": "south",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              1.0,
+              -6.5
+            ],
+            [
+              6.5,
+              -6.5
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 111,
+        "startid": 5,
+        "endid": 4,
+        "overridable": true,
+        "cost": 5.5,
+        "metadata": {
+          "lane": "south",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              6.5,
+              -6.5
+            ],
+            [
+              1.0,
+              -6.5
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 112,
+        "startid": 5,
+        "endid": 6,
+        "overridable": true,
+        "cost": 6.5,
+        "metadata": {
+          "lane": "south",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              6.5,
+              -6.5
+            ],
+            [
+              13.0,
+              -6.5
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 113,
+        "startid": 6,
+        "endid": 5,
+        "overridable": true,
+        "cost": 6.5,
+        "metadata": {
+          "lane": "south",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              13.0,
+              -6.5
+            ],
+            [
+              6.5,
+              -6.5
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 114,
+        "startid": 6,
+        "endid": 7,
+        "overridable": true,
+        "cost": 6.801,
+        "metadata": {
+          "lane": "south",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              13.0,
+              -6.5
+            ],
+            [
+              15.0,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 115,
+        "startid": 7,
+        "endid": 6,
+        "overridable": true,
+        "cost": 6.801,
+        "metadata": {
+          "lane": "south",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              15.0,
+              0.0
+            ],
+            [
+              13.0,
+              -6.5
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 116,
+        "startid": 7,
+        "endid": 8,
+        "overridable": true,
+        "cost": 10.296,
+        "metadata": {
+          "lane": "common",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              15.0,
+              0.0
+            ],
+            [
+              20.0,
+              9.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 117,
+        "startid": 8,
+        "endid": 7,
+        "overridable": true,
+        "cost": 10.296,
+        "metadata": {
+          "lane": "common",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              20.0,
+              9.0
+            ],
+            [
+              15.0,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 118,
+        "startid": 8,
+        "endid": 9,
+        "overridable": true,
+        "cost": 7.071,
+        "metadata": {
+          "lane": "common",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              20.0,
+              9.0
+            ],
+            [
+              25.0,
+              14.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 119,
+        "startid": 9,
+        "endid": 8,
+        "overridable": true,
+        "cost": 7.071,
+        "metadata": {
+          "lane": "common",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              25.0,
+              14.0
+            ],
+            [
+              20.0,
+              9.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 120,
+        "startid": 9,
+        "endid": 10,
+        "overridable": true,
+        "cost": 2.828,
+        "metadata": {
+          "lane": "common",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              25.0,
+              14.0
+            ],
+            [
+              27.0,
+              16.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 121,
+        "startid": 10,
+        "endid": 9,
+        "overridable": true,
+        "cost": 2.828,
+        "metadata": {
+          "lane": "common",
+          "speed_limit": 1.0
+        }
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              27.0,
+              16.0
+            ],
+            [
+              25.0,
+              14.0
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

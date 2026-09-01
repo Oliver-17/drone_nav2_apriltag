@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  === 這個檔案是產生出來的，不要手改 ===
+  來源：scripts/gen_arena.py，改幾何請改那支再重跑。
+
+  nav2_arena：給 Nav2 定高導航 + AprilTag 降落用的場地。
+
+  路線
+  ====
+  起飛區 A -> 直走廊 B（北道窄 6 m / 南道寬 9 m，二選一）-> 匯合區 M
+           -> 斜走廊 C（45 度，左下往右上）-> 空地 D（正中央地面有 AprilTag）
+
+  設計原則
+  ========
+  1. 所有障礙物都是 15 m 高的牆 —— 不放矮的、可飛越的東西。
+     「從上面飛過去」是地圖設計上的取巧，不是真的 3D 避障。
+  2. 通道寬度由編隊決定，不是由美觀決定：三角編隊跨距 4 m + 機身 = 4.5 m，
+     再加 Nav2 costmap 膨脹層左右各 2 m 以上 => 主通道 9 m。
+  3. 起點到終點有兩條路，route_server 才有得選。
+  4. 兩條路條件不同（北道被夾到 6 m），選擇才有物理依據而不是擲骰子。
+
+  座標系：ENU（x 東、y 北、z 上）—— 見下方 <world_frame_orientation>。
+  PX4 內部是 NED，兩者前兩軸對調，寫任何座標前先確認自己在哪個系統。
+
+  外框：x [-6.2, 33.2]  y [-11.2, 22.2]   (40 x 34 m)
+  AprilTag：(27, 16)
+-->
+<sdf version="1.9">
+  <world name="nav2_arena">
+    <physics type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+    <gravity>0 0 -9.8</gravity>
+    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+    <atmosphere type="adiabatic"/>
+    <scene>
+      <grid>false</grid>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.7 0.7 0.7 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <!-- 為什麼要有 spherical_coordinates：PX4 的 GPS 模擬需要一個原點經緯度，
+         而 world_frame_orientation 決定 SDF 的 <pose> 怎麼解讀。數值沿用 PX4 內建 world。 -->
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>47.397971057728974</latitude_deg>
+      <longitude_deg>8.546163739800146</longitude_deg>
+      <elevation>0</elevation>
+    </spherical_coordinates>
+
+    <light name="sunUTC" type="directional">
+      <pose>0 0 500 0 -0 0</pose>
+      <cast_shadows>true</cast_shadows>
+      <intensity>1</intensity>
+      <direction>0.001 0.625 -0.78</direction>
+      <diffuse>0.904 0.904 0.904 1</diffuse>
+      <specular>0.271 0.271 0.271 1</specular>
+      <attenuation>
+        <range>2000</range><linear>0</linear><constant>1</constant><quadratic>0</quadratic>
+      </attenuation>
+      <spot><inner_angle>0</inner_angle><outer_angle>0</outer_angle><falloff>0</falloff></spot>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>1 1</size></plane></geometry>
+          <surface><friction><ode/></friction><bounce/><contact/></surface>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>200 200</size></plane></geometry>
+          <material>
+            <ambient>0.75 0.75 0.75 1</ambient>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ===== 牆 ===== -->
+    <!-- 起飛區 A 的西界 -->
+    <model name="wall_west">
+      <static>true</static>
+      <pose>-6.0 0.0 7.5 0 0 0.0000000000</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.5 22.5 15.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.5 22.5 15.0</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.35 1</ambient>
+            <diffuse>0.65 0.65 0.7 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 南界，同時是南道的外牆 -->
+    <model name="wall_south">
+      <static>true</static>
+      <pose>6.5 -11.0 7.5 0 0 0.0000000000</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>25.5 0.5 15.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>25.5 0.5 15.0</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.35 1</ambient>
+            <diffuse>0.65 0.65 0.7 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 北界，東端止於 x=15 接上斜走廊 -->
+    <model name="wall_north">
+      <static>true</static>
+      <pose>4.5 11.0 7.5 0 0 0.0000000000</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>21.5 0.5 15.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>21.5 0.5 15.0</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.35 1</ambient>
+            <diffuse>0.65 0.65 0.7 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 匯合區 M 的東界，北端止於 y=1 接上斜走廊 -->
+    <model name="wall_east">
+      <static>true</static>
+      <pose>19.0 -5.0 7.5 0 0 0.0000000000</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.5 12.5 15.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.5 12.5 15.0</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.35 1</ambient>
+            <diffuse>0.65 0.65 0.7 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 把直走廊劈成南北兩道。東端只到 x=11，刻意不伸到匯合區，免得擋住轉進斜走廊的路 -->
+    <model name="divider">
+      <static>true</static>
+      <pose>6.5 0.0 7.5 0 0 0.0000000000</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>9.0 4.0 15.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>9.0 4.0 15.0</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.35 1</ambient>
+            <diffuse>0.65 0.65 0.7 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 北道的束縮塊：把北道從 9 m 夾到 6 m，讓兩條路真的有優劣差別 -->
+    <model name="pinch_north">
+      <static>true</static>
+      <pose>6.5 9.5 7.5 0 0 0.0000000000</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>3.0 3.0 15.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>3.0 3.0 15.0</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.35 1</ambient>
+            <diffuse>0.65 0.65 0.7 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 斜走廊西北側牆，(15,11)->(21,17) -->
+    <model name="wall_diag_nw">
+      <static>true</static>
+      <pose>18.0 14.0 7.5 0 0 0.7853981634</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>8.8 0.5 15.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>8.8 0.5 15.0</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.35 1</ambient>
+            <diffuse>0.65 0.65 0.7 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 斜走廊東南側牆，(19,1)->(28,10) -->
+    <model name="wall_diag_se">
+      <static>true</static>
+      <pose>23.5 5.5 7.5 0 0 0.7853981634</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>13.0 0.5 15.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>13.0 0.5 15.0</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.35 1</ambient>
+            <diffuse>0.65 0.65 0.7 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 空地 D 的西界 -->
+    <model name="wall_d_west">
+      <static>true</static>
+      <pose>21.0 19.5 7.5 0 0 0.0000000000</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.5 5.5 15.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.5 5.5 15.0</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.35 1</ambient>
+            <diffuse>0.65 0.65 0.7 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 空地 D 的北界 -->
+    <model name="wall_d_north">
+      <static>true</static>
+      <pose>27.0 22.0 7.5 0 0 0.0000000000</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>12.5 0.5 15.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>12.5 0.5 15.0</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.35 1</ambient>
+            <diffuse>0.65 0.65 0.7 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 空地 D 的東界 -->
+    <model name="wall_d_east">
+      <static>true</static>
+      <pose>33.0 16.0 7.5 0 0 0.0000000000</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.5 12.5 15.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.5 12.5 15.0</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.35 1</ambient>
+            <diffuse>0.65 0.65 0.7 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 空地 D 的南界，西端止於 x=28 接上斜走廊 -->
+    <model name="wall_d_south">
+      <static>true</static>
+      <pose>30.5 10.0 7.5 0 0 0.0000000000</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>5.5 0.5 15.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>5.5 0.5 15.0</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.35 1</ambient>
+            <diffuse>0.65 0.65 0.7 1</diffuse>
+            <specular>0.2 0.2 0.2 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ===== 降落標記 =====
+         z 給 0.01 而不是 0：跟地面同高會發生 z-fighting（兩個共面的多邊形互相
+         閃爍），相機會拍到雜訊。抬高 1 cm 對偵測沒有影響。 -->
+    <include>
+      <uri>model://apriltag_36h11</uri>
+      <name>landing_tag</name>
+      <pose>27.0 16.0 0.01 0 0 0</pose>
+    </include>
+
+  </world>
+</sdf>

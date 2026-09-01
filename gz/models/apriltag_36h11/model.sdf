@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.9'>
+  <!--
+    為什麼不直接用 PX4 內建的 arucotag：
+    那張圖是 ArUco 標記，而 apriltag_ros 預設解碼的是 AprilTag 36h11
+    （見 /opt/ros/humble/share/apriltag_ros/cfg/tags_36h11.yaml）。
+    兩者是不同的編碼字典，餵錯不會報錯，只會永遠偵測不到 —— 這種靜默失敗最難查。
+
+    尺寸換算：貼圖是 14x14 格（10 格的標記本體 + 四周各 2 格白色靜區），
+    平面邊長取 1.4 m，所以剛好 1 格 = 0.1 m，標記本體外緣正好 1.0 m。
+    下游 apriltag_ros 的 tag size 參數就填 1.0，不用算小數。
+  -->
+  <model name='apriltag_36h11'>
+    <static>true</static>
+    <pose>0 0 0.001 0 0 0</pose>
+    <link name='base'>
+      <visual name='base_visual'>
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>1.4 1.4</size>
+          </plane>
+        </geometry>
+        <material>
+          <diffuse>1 1 1 1</diffuse>
+          <specular>0.1 0.1 0.1 1</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://apriltag_36h11/apriltag_36h11.png</albedo_map>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>drone_nav2_apriltag</name>
+  <version>0.1.0</version>
+  <description>Gazebo 導航場地、nav2_route 拓樸地圖，以及不依賴 Nav2 的自測工具</description>
+
+  <maintainer email="oliver.920906@gmail.com">oliver</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- 這個套件目前只裝資料檔（world / model / graph）與 Python 腳本，
+       沒有 C++ 節點，所以不需要 rclcpp。等 T3 那支飛節點的節點寫出來再加。 -->
+
+  <!-- 拓樸地圖的規劃器，graph 檔格式由它定義 -->
+  <exec_depend>nav2_route</exec_depend>
+  <!-- T2 把 graph 發成 MarkerArray 給 RViz 疊圖用 -->
+  <exec_depend>visualization_msgs</exec_depend>
+  <!-- T2：RViz 疊圖 -->
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <!-- T3b：讀 route_server 的規劃結果、發 PX4 的 offboard setpoint -->
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>px4_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
