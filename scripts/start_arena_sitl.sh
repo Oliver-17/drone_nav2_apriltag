@@ -17,7 +17,8 @@
 # =============================================================================
 set -e
 
-PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
+PX4_DIR="${PX4_DIR:-/home/zhg/ncrl_mqtt/PX4-Autopilot}" #這裡只是針對我的路徑
+# PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}" 通用應該是這個
 BUILD_DIR="$PX4_DIR/build/px4_sitl_default"
 # 這支腳本在 <pkg>/scripts/ 底下，往上一層就是套件根目錄
 PKG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -69,7 +70,7 @@ export GZ_SIM_RESOURCE_PATH="$PKG_DIR/gz/models:$GZ_SIM_RESOURCE_PATH"
 export PX4_GZ_MODELS="$PKG_DIR/gz/models"
 
 echo "世界： $PX4_GZ_WORLDS/$PX4_GZ_WORLD.sdf"
-echo "機體： $PX4_GZ_MODELS/${SIM_MODEL:-x500_nav2}/model.sdf"
+echo "機體： $PX4_GZ_MODELS/${SIM_MODEL:-x500_depth_nav2}/model.sdf"
 
 NAMES=("MAV1" "MAV2" "MAV3")
 # ENU：第一個是東、第二個是北。擺在拓樸圖節點 0 (-2, 0) 附近，
@@ -83,7 +84,7 @@ POSES=("-2,0"  "-2,3"  "-2,-3")
 # 整個 PX4 原始碼都不再讀它（只剩 docs/en/sim_gazebo_gz/index.md:267 的說明），
 # 之前寫 PX4_GZ_MODEL=x500 其實沒有生效，會出 x500 純粹是因為
 # airframes/4001_gz_x500 裡的預設值 PX4_SIM_MODEL=${PX4_SIM_MODEL:=x500}。
-SIM_MODEL="${SIM_MODEL:-x500_nav2}"
+SIM_MODEL="${SIM_MODEL:-x500_depth_nav2}"
 
 # --- 小工具：輪詢等待某個條件成立 -------------------------------------------
 wait_for() {

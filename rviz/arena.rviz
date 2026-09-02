@@ -71,7 +71,7 @@ Visualization Manager:
         # Best Effort：訂閱端用 BE 可以收 RELIABLE 發布者的資料，反過來不行，
         # 所以這裡選 BE 最不會踩到 QoS 不相容而「安靜地」沒畫面。
         Reliability Policy: Best Effort
-        Value: /MAV1/camera_front/image_raw
+        Value: /MAV1/camera_front/rgb/image_raw
       Value: true
     - Class: rviz_default_plugins/Image
       Name: Down Camera
@@ -85,7 +85,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /MAV1/camera_down/image_raw
+        Value: /MAV1/camera_down/rgb/image_raw
       Value: true
     - Class: rviz_default_plugins/TF
       Name: TF

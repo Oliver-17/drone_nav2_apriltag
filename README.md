@@ -1,5 +1,43 @@
 # drone_nav2_apriltag — Gazebo 導航場地 + nav2_route 拓樸地圖
 
+## 最新修改：x500_depth_nav2 RGB-D / RTAB-Map 前置整合
+
+這個分支新增 `x500_depth_nav2`，以 PX4 內建 `x500_depth` 為基礎：保留前視 `OakD-Lite` 深度相機，再額外加入朝下 `OakD-Lite` 與 2D lidar。啟動時預設模型已切成：
+
+![x500_depth_nav2 感測器配置](docs/mav.png)
+
+```bash
+SIM_MODEL=x500_depth_nav2
+```
+
+`launch/cameras.launch.py` 也已改成橋接新模型的 RGB-D / lidar topics：
+
+```text
+/MAV1/camera_front/rgb/image_raw
+/MAV1/camera_front/rgb/camera_info
+/MAV1/camera_front/depth/image_raw
+/MAV1/camera_front/depth/camera_info
+/MAV1/camera_front/depth/points
+/MAV1/camera_down/rgb/image_raw
+/MAV1/camera_down/rgb/camera_info
+/MAV1/camera_down/depth/image_raw
+/MAV1/camera_down/depth/camera_info
+/MAV1/camera_down/depth/points
+/MAV1/scan
+```
+
+同時發布 sensor mount 的 static TF：
+
+```text
+base_link -> camera_link
+base_link -> camera_down_link
+base_link -> lidar_link
+```
+
+RTAB-Map 還需要動態 `odom -> base_link`。這段不要用 SDF/static TF 假造，應該由 PX4 `/MAV1/fmu/out/vehicle_odometry` 轉出，或由 RTAB-Map 的 RGB-D odometry 產生。
+
+---
+
 ROS 2 Humble + PX4 SITL 的**場地與地圖套件**。
 提供一個只有高牆的 Gazebo 場地、一張對應的 `nav2_route` 拓樸圖，
 以及三層可以獨立執行的驗證工具（靜態檢查 / RViz 疊圖 / 實飛）。
@@ -339,7 +377,7 @@ PX4 內建的機體每台只帶一種感測器（`x500_mono_cam` 前相機、`x5
 
 | 感測器 | link | gz topic | 掛點（相對模型原點） | 規格 |
 |---|---|---|---|---|
-| 前視相機 | `camera_front_link` | `/MAV1/camera_front/image_raw` | `0.12  0  0.242` | 1280×960, FOV 1.74 rad, 30 Hz |
+| 前視相機 | `camera_front_link` | `/MAV1/camera_front/image_raw` | `0.22  0  0.242` | 1280×960, FOV 1.74 rad, 30 Hz |
 | 下視相機 | `camera_down_link` | `/MAV1/camera_down/image_raw` | `0  0  0.10`，pitch 1.5707 | 同上 |
 | 2D 光達 | `lidar_link` | `/MAV1/scan` | `0.12  0  0.26` | 1080 點, ±135°, 0.1–30 m, 30 Hz |
 

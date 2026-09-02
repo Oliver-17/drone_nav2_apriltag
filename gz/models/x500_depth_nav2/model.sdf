@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  x500_depth_nav2: PX4 x500_depth plus a downward camera and a 2D lidar.
+
+  This model keeps the front OakD-Lite RGB/depth camera mount from PX4's built-in
+  x500_depth model, then adds the downward camera and lidar needed by the Nav2 /
+  AprilTag workflow.
+-->
+<sdf version='1.9'>
+  <model name='x500_depth_nav2'>
+    <self_collide>false</self_collide>
+
+    <include merge='true'>
+      <uri>model://x500</uri>
+    </include>
+
+    <!-- ================= Front RGB/depth camera ================= -->
+    <!-- This block intentionally matches PX4's built-in x500_depth model. -->
+    <include merge='true'>
+      <uri>model://OakD-Lite</uri>
+      <pose>.12 .03 .242 0 0 0</pose>
+    </include>
+    <joint name="CameraJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_link</child>
+      <pose relative_to="base_link">.12 .03 .242 0 0 0</pose>
+    </joint>
+
+    <!-- ================= Downward RGB/depth camera ================= -->
+    <!-- OakD-Lite expanded locally instead of merge-included, so its frame can be
+         named camera_down_link without colliding with the front camera_link.
+         pitch +1.5707 rotates the camera optical axis (local +X) toward model -Z. -->
+    <link name="camera_down_link">
+      <pose>0 0 0.10 0 1.5707 0</pose>
+      <inertial>
+        <pose>0.00358 0 .014 0 0 0</pose>
+        <mass>0.061</mass>
+        <inertia>
+          <ixx>0.0000460804</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.0000055421</iyy><iyz>0</iyz><izz>0.0000436519</izz>
+        </inertia>
+      </inertial>
+      <visual name="camera_down_outer_strut">
+        <pose>-0.061 0.0303 0 0 0 0</pose>
+        <geometry><box><size>0.122 0.014 0.014</size></box></geometry>
+        <material><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+      <visual name="camera_down_inner_strut">
+        <pose>-0.061 -0.0303 0 0 0 0</pose>
+        <geometry><box><size>0.122 0.014 0.014</size></box></geometry>
+        <material><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+      <visual name="camera_down_mount_plate">
+        <pose>-0.122 0 0 0 0 0</pose>
+        <geometry><box><size>0.012 0.105 0.060</size></box></geometry>
+        <material><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+      <visual name="camera_down_outer_foot">
+        <pose>-0.004 0.0303 0 0 0 0</pose>
+        <geometry><box><size>0.014 0.024 0.024</size></box></geometry>
+        <material><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+      <visual name="camera_down_inner_foot">
+        <pose>-0.004 -0.0303 0 0 0 0</pose>
+        <geometry><box><size>0.014 0.024 0.024</size></box></geometry>
+        <material><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+      <visual name="OakD-Lite-down/visual">
+        <pose>0 0.03 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://OakD-Lite/meshes/OakDLite.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="OakD-Lite-down/collision">
+        <pose>0.00358 0 .014 0 0 0</pose>
+        <geometry><box><size>0.0175 0.091 0.028</size></box></geometry>
+      </collision>
+      <sensor name="IMX214_down" type="camera">
+        <gz_frame_id>camera_down_link</gz_frame_id>
+        <pose>0.01233 0 .01878 0 0 0</pose>
+        <camera>
+          <horizontal_fov>1.204</horizontal_fov>
+          <image><width>1920</width><height>1080</height></image>
+          <clip><near>0.1</near><far>100</far></clip>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>true</visualize>
+      </sensor>
+      <sensor name="StereoOV7251_down" type="depth_camera">
+        <gz_frame_id>camera_down_link</gz_frame_id>
+        <pose>0.01233 0 .01878 0 0 0</pose>
+        <camera>
+          <horizontal_fov>1.274</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R_FLOAT32</format>
+          </image>
+          <clip><near>0.2</near><far>19.1</far></clip>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>true</visualize>
+      </sensor>
+      <gravity>true</gravity>
+      <velocity_decay />
+    </link>
+    <joint name="CameraDownJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_down_link</child>
+    </joint>
+
+    <!-- ================= 2D lidar ================= -->
+    <!-- Suspended over the center area by side feet and diagonal struts, avoiding the flight controller top. -->
+    <link name="lidar_link">
+      <pose>0 0 0.30 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0.0435 0 0 0</pose>
+        <mass>0.37</mass>
+        <inertia>
+          <ixx>0.00034437749999999994</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.00034437749999999994</iyy><iyz>0</iyz>
+          <izz>0.00022199999999999998</izz>
+        </inertia>
+      </inertial>
+      <visual name="lidar_top_plate">
+        <pose>0 0 -0.022 0 0 0</pose>
+        <geometry><box><size>0.090 0.090 0.010</size></box></geometry>
+        <material><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+      <visual name="lidar_left_base_foot">
+        <pose>0 0.090 -0.075 0 0 0</pose>
+        <geometry><box><size>0.100 0.018 0.012</size></box></geometry>
+        <material><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+      <visual name="lidar_right_base_foot">
+        <pose>0 -0.090 -0.075 0 0 0</pose>
+        <geometry><box><size>0.100 0.018 0.012</size></box></geometry>
+        <material><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+      <visual name="lidar_left_diag_strut">
+        <pose>0 0.055 -0.048 0.82 0 0</pose>
+        <geometry><box><size>0.012 0.012 0.082</size></box></geometry>
+        <material><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+      <visual name="lidar_right_diag_strut">
+        <pose>0 -0.055 -0.048 -0.82 0 0</pose>
+        <geometry><box><size>0.012 0.012 0.082</size></box></geometry>
+        <material><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+      <visual name="lidar_front_diag_strut">
+        <pose>0.055 0 -0.048 0 0.82 0</pose>
+        <geometry><box><size>0.012 0.012 0.082</size></box></geometry>
+        <material><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+      <visual name="lidar_back_diag_strut">
+        <pose>-0.055 0 -0.048 0 -0.82 0</pose>
+        <geometry><box><size>0.012 0.012 0.082</size></box></geometry>
+        <material><diffuse>0.05 0.05 0.05 1</diffuse></material>
+      </visual>
+      <visual name="lidar_visual">
+        <geometry>
+          <mesh><uri>model://lidar_2d_v2/meshes/lidar_2d_v2.dae</uri></mesh>
+        </geometry>
+      </visual>
+      <sensor name="lidar_2d" type="gpu_lidar">
+        <gz_frame_id>lidar_link</gz_frame_id>
+        <pose>0 0 0.055 0 0 0</pose>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>1080</samples>
+              <resolution>1</resolution>
+              <min_angle>-2.356195</min_angle>
+              <max_angle>2.356195</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.1</min>
+            <max>30</max>
+            <resolution>0.01</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.001</stddev>
+          </noise>
+        </ray>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>false</visualize>
+      </sensor>
+    </link>
+    <joint name="LidarJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>lidar_link</child>
+    </joint>
+  </model>
+</sdf>
