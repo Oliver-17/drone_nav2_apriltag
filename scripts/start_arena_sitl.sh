@@ -46,7 +46,7 @@ fi
 export GZ_IP=127.0.0.1
 
 # --- Gazebo 資源路徑 ---------------------------------------------------------
-# 先 source PX4 的 gz_env.sh 取得 PX4_GZ_MODELS（x500 在那裡）、外掛路徑與
+# 先 source PX4 的 gz_env.sh 取得 PX4 的模型目錄（x500 本體與 lidar mesh 在那裡）、外掛路徑與
 # server config，再把「世界」改指到本套件。順序不能反 ——
 # gz_env.sh 是無條件覆寫 PX4_GZ_WORLDS 的，先設會被蓋掉。
 # shellcheck disable=SC1091
@@ -56,19 +56,34 @@ source "$BUILD_DIR/rootfs/gz_env.sh"
 export PX4_GZ_WORLDS="$PKG_DIR/gz/worlds"
 export PX4_GZ_WORLD=nav2_arena
 
-# AprilTag 模型在本套件裡，要讓 Gazebo 展開 <uri>model://apriltag_36h11</uri>。
-# 注意 PX4_GZ_MODELS 不能改 —— px4-rc.gzsim:137 是
-# file://${PX4_GZ_MODELS}/${MODEL_NAME}/model.sdf，寫死單一目錄不是搜尋路徑，
-# 改掉的話 x500 就找不到了。自製模型只能靠 GZ_SIM_RESOURCE_PATH 這條路進來。
+# 本套件的模型（apriltag_36h11、x500_nav2）要讓 Gazebo 能展開 model:// URI。
 export GZ_SIM_RESOURCE_PATH="$PKG_DIR/gz/models:$GZ_SIM_RESOURCE_PATH"
 
+# 機體模型走的是另一條路：px4-rc.gzsim:137 組出來的是
+# file://${PX4_GZ_MODELS}/${MODEL_NAME}/model.sdf ——
+# 寫死單一目錄，不吃 GZ_SIM_RESOURCE_PATH，所以自製機體必須把 PX4_GZ_MODELS
+# 整個指過來。（先前這裡的註解寫「PX4_GZ_MODELS 不能改」是錯的：
+# 上面 gz_env.sh 那行 GZ_SIM_RESOURCE_PATH=...:$PX4_GZ_MODELS:... 在 source
+# 當下就把 PX4 的模型目錄烤進搜尋路徑了，之後改 PX4_GZ_MODELS 也不影響
+# x500_nav2 內部那句 <uri>model://x500</uri> 的解析。）
+export PX4_GZ_MODELS="$PKG_DIR/gz/models"
+
 echo "世界： $PX4_GZ_WORLDS/$PX4_GZ_WORLD.sdf"
+echo "機體： $PX4_GZ_MODELS/${SIM_MODEL:-x500_nav2}/model.sdf"
 
 NAMES=("MAV1" "MAV2" "MAV3")
 # ENU：第一個是東、第二個是北。擺在拓樸圖節點 0 (-2, 0) 附近，
 # T3 照節點順序飛的時候起點才對得上。三台沿南北排開，間隔 3 公尺。
 # 節點 0 的座標定義在 scripts/gen_arena.py，那邊改了這裡也要跟著改。
 POSES=("-2,0"  "-2,3"  "-2,-3")
+
+# 機體模型：x500_nav2 = x500 + 前視相機 + 下視相機 + 2D 光達，
+# 定義在 gz/models/x500_nav2/。飛行物理與 x500 完全相同，所以機型仍用 4001。
+# 為什麼是 PX4_SIM_MODEL 而不是 PX4_GZ_MODEL：後者自 v1.15 起已廢棄，
+# 整個 PX4 原始碼都不再讀它（只剩 docs/en/sim_gazebo_gz/index.md:267 的說明），
+# 之前寫 PX4_GZ_MODEL=x500 其實沒有生效，會出 x500 純粹是因為
+# airframes/4001_gz_x500 裡的預設值 PX4_SIM_MODEL=${PX4_SIM_MODEL:=x500}。
+SIM_MODEL="${SIM_MODEL:-x500_nav2}"
 
 # --- 小工具：輪詢等待某個條件成立 -------------------------------------------
 wait_for() {
@@ -135,7 +150,7 @@ for i in $(seq 0 $((DRONES - 1))); do
         cd "$WORK_DIR"
         PX4_UXRCE_DDS_NS="$NAME" \
         PX4_SYS_AUTOSTART=4001 \
-        PX4_GZ_MODEL=x500 \
+        PX4_SIM_MODEL="$SIM_MODEL" \
         PX4_GZ_MODEL_POSE="$POSE" \
         HEADLESS="${HEADLESS:-}" \
         "$BUILD_DIR/bin/px4" -i "$i" -d "$BUILD_DIR/etc" \

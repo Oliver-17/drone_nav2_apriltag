@@ -57,6 +57,36 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /vehicle_marker
+    - Class: rviz_default_plugins/Image
+      Name: Front Camera
+      Enabled: true
+      Max Value: 1
+      Min Value: 0
+      Median window: 5
+      Normalize Range: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        # Best Effort：訂閱端用 BE 可以收 RELIABLE 發布者的資料，反過來不行，
+        # 所以這裡選 BE 最不會踩到 QoS 不相容而「安靜地」沒畫面。
+        Reliability Policy: Best Effort
+        Value: /MAV1/camera_front/image_raw
+      Value: true
+    - Class: rviz_default_plugins/Image
+      Name: Down Camera
+      Enabled: true
+      Max Value: 1
+      Min Value: 0
+      Median window: 5
+      Normalize Range: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /MAV1/camera_down/image_raw
+      Value: true
     - Class: rviz_default_plugins/TF
       Name: TF
       Enabled: true
@@ -101,7 +131,12 @@ Visualization Manager:
 Window Geometry:
   Displays:
     collapsed: false
+  Front Camera:
+    collapsed: false
+  Down Camera:
+    collapsed: false
   Height: 900
-  Width: 1500
+  Width: 1700
   Hide Left Dock: false
-  Hide Right Dock: true
+  # 右邊的 dock 要留著，兩個 Image display 的畫面是停在那裡的
+  Hide Right Dock: false

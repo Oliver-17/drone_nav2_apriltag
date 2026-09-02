@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  x500_nav2 —— 給 Nav2 / AprilTag 降落用的 x500，帶前視相機 + 下視相機 + 2D 光達。
+
+  為什麼要自製一台：PX4 內建的 x500_mono_cam（前）、x500_mono_cam_down（下）、
+  x500_lidar_2d（光達）每台都只帶一種感測器，沒有任何一台同時具備我們需要的三樣。
+
+  為什麼三個感測器的 link 是「展開寫」而不是 <include merge='true'>：
+  merge-include 不會替被合併進來的 link 改名，<name> 只影響那個中介 frame。
+  實測把 model://mono_cam merge 兩次會得到
+      Warning [Utils.cc:115] Non-unique name[camera_link] detected 2 times
+  而且它只是 warning，模型照樣載入，之後 TF 與 gz-ros bridge 都會抓到錯的
+  link，症狀很難查。所以前 / 下相機的 link 必須各自獨立命名。
+  光達雖然原本 link 叫 "link" 不會撞名，但一併展開才能取個看得懂的名字 lidar_link，
+  之後 TF 與 Nav2 的 costmap 設定都要用到這個名字。
+
+  座標系說明：底下所有 <link><pose> 都是相對「模型原點」，不是相對 base_link。
+  x500_base 自己有 <pose>0 0 .24</pose>，所以 base_link 在模型原點上方 0.24 m，
+  而起落架腳底大約在模型原點 z=0.013 處（也就是地面）。
+  這是照抄 PX4 內建那幾台的慣例，數值才能直接沿用不必換算。
+-->
+<sdf version='1.9'>
+  <model name='x500_nav2'>
+    <!-- 感測器掛在機身上不該互撞，關掉自碰撞（抄 x500_mono_cam_down 的做法） -->
+    <self_collide>false</self_collide>
+
+    <!-- 機體本體：四顆馬達、IMU、氣壓計、磁力計、GPS 全部原封不動沿用。
+         因為飛行物理沒改，PX4 機型仍然用 4001_gz_x500，不需要新的 airframe 檔。 -->
+    <include merge='true'>
+      <uri>model://x500</uri>
+    </include>
+
+    <!-- ================= 前視相機 ================= -->
+    <!-- x 從 PX4 內建 x500_mono_cam 的 0.12 往前移到 0.22，兩個理由：
+         (1) 0.12 在機身板半寬 0.177 之內、z 也落在板厚 0.222~0.272 中間，
+             整顆相機是「埋在機身裡」的，在 Gazebo 裡根本看不到它。
+             之所以畫面沒被機身擋住，只是因為 near clip 0.1 m 把機身裁掉了 —— 很脆弱。
+         (2) 螺旋槳轂在 x=0.174、比相機高 0.058 m，仰角只有 18°，
+             遠在垂直半視角 41° 之內，所以畫面角落一定會拍到自己的槳葉。
+             相機移到 0.22（超過槳轂 0.174）之後槳就跑到相機後面了。
+         y 保持 0 置中（x500_mono_cam 是 .03，偏心會讓影像中心跟機體前進方向對不齊）。 -->
+    <link name="camera_front_link">
+      <pose>0.22 0 0.242 0 0 0</pose>
+      <inertial>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>4e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>4e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+        </inertia>
+      </inertial>
+      <!-- 支臂：相機突出機身板 0.043 m，不畫這根的話在 Gazebo 裡會看起來浮在空中。
+           本 link 沒有旋轉，所以往機身的方向就是 local -X。
+           從 x=-0.055 拉到 0，尾端埋進板子裡 1.2 cm 確保接得上。 -->
+      <visual name="camera_front_boom">
+        <pose>-0.0275 0 0 0 0 0</pose>
+        <geometry><box><size>0.055 0.018 0.018</size></box></geometry>
+      </visual>
+      <visual name="camera_front_housing">
+        <geometry><box><size>0.02 0.04 0.04</size></box></geometry>
+      </visual>
+      <visual name="camera_front_lens">
+        <pose>0.015 0 0 0 1.5707 0</pose>
+        <geometry><cylinder><radius>0.008</radius><length>0.01</length></cylinder></geometry>
+      </visual>
+      <sensor name="imager_front" type="camera">
+        <gz_frame_id>camera_front_link</gz_frame_id>
+        <!-- 這裡刻意「不」寫 <topic>，讓 gz 用自動生成的長名字：
+             /world/<世界>/model/x500_nav2_<i>/link/camera_front_link/sensor/imager_front/image
+             原因：SDF 是靜態檔，PX4 會拿同一份 spawn 三台，寫死 <topic>camera_front</topic>
+             的話三台會全部發到同一個 topic 上互相蓋掉（camera_info 更慘，兩顆相機都會
+             掉到 /camera_info）。自動名字含 model instance 編號才分得開。
+             長名字由 launch/cameras.launch.py 用 ROS remap 換成 /MAV1/camera_front/... -->
+        <camera>
+          <horizontal_fov>1.74</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>960</height>
+          </image>
+          <clip><near>0.1</near><far>3000</far></clip>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>true</visualize>
+      </sensor>
+    </link>
+    <joint name="CameraFrontJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_front_link</child>
+    </joint>
+
+    <!-- ================= 下視相機（AprilTag 降落用） ================= -->
+    <!-- pitch = +1.5707 把相機光軸（本體 +X）轉成朝下 -Z。
+         z=0.10 是模型原點上方 10 cm，也就是 base_link 下方 14 cm：
+         必須低於機身板（板底約在 base_link 下 1.8 cm）否則會拍到自己的機身，
+         又必須高於腳底（模型原點 z=0.013）否則停在地面時會插進地板。 -->
+    <link name="camera_down_link">
+      <pose>0 0 0.10 0 1.5707 0</pose>
+      <inertial>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>4e-05</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>4e-05</iyy><iyz>0</iyz><izz>4e-05</izz>
+        </inertia>
+      </inertial>
+      <!-- 支柱：相機在模型 z=0.10，機身板底在 z=0.222，中間空了 0.122 m，
+           不畫這根的話在 Gazebo 裡會看到相機整顆懸空。
+           注意本 link 有 pitch +1.5707，local 座標軸跟著轉了：
+           local +X 指向世界 -Z（相機光軸朝下），所以「往上接回機身」是 local -X 方向。
+           box 的 size 第一個數字是沿 local X，也就是實際的垂直長度。 -->
+      <visual name="camera_down_mast">
+        <pose>-0.061 0 0 0 0 0</pose>
+        <geometry><box><size>0.122 0.018 0.018</size></box></geometry>
+      </visual>
+      <visual name="camera_down_housing">
+        <geometry><box><size>0.02 0.04 0.04</size></box></geometry>
+      </visual>
+      <visual name="camera_down_lens">
+        <pose>0.015 0 0 0 1.5707 0</pose>
+        <geometry><cylinder><radius>0.008</radius><length>0.01</length></cylinder></geometry>
+      </visual>
+      <sensor name="imager_down" type="camera">
+        <gz_frame_id>camera_down_link</gz_frame_id>
+        <camera>
+          <horizontal_fov>1.74</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>960</height>
+          </image>
+          <clip><near>0.1</near><far>3000</far></clip>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>true</visualize>
+      </sensor>
+    </link>
+    <joint name="CameraDownJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_down_link</child>
+    </joint>
+
+    <!-- ================= 2D 光達（給之後的 Nav2 costmap / SLAM） ================= -->
+    <!-- 位置 .12 0 .26 照抄 x500_lidar_2d，是 PX4 驗證過的掛點。
+         關鍵是高度：光達 link 在模型原點上方 0.26，感測器本體在 link 內再 +0.055，
+         所以掃描面在 0.315；螺旋槳掃掠面在 0.30，剛好從槳葉上方 1.5 cm 掠過，
+         不會每一幀都掃到自己的槳。改高度時務必重新確認這件事。
+         規格：1080 點、±135°（2.356195 rad）、0.1~30 m。
+         注意它掃不到正後方那 90 度，貼牆倒退飛是盲的。 -->
+    <link name="lidar_link">
+      <pose>0.12 0 0.26 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0.0435 0 0 0</pose>
+        <mass>0.37</mass>
+        <inertia>
+          <ixx>0.00034437749999999994</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.00034437749999999994</iyy><iyz>0</iyz>
+          <izz>0.00022199999999999998</izz>
+        </inertia>
+      </inertial>
+      <!-- mesh 仍然指到 PX4 那包，靠 GZ_SIM_RESOURCE_PATH 解析，不重複複製檔案 -->
+      <visual name="lidar_visual">
+        <geometry>
+          <mesh><uri>model://lidar_2d_v2/meshes/lidar_2d_v2.dae</uri></mesh>
+        </geometry>
+      </visual>
+      <sensor name="lidar_2d" type="gpu_lidar">
+        <gz_frame_id>lidar_link</gz_frame_id>
+        <pose>0 0 0.055 0 0 0</pose>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>1080</samples>
+              <resolution>1</resolution>
+              <min_angle>-2.356195</min_angle>
+              <max_angle>2.356195</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.1</min>
+            <max>30</max>
+            <resolution>0.01</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.001</stddev>
+          </noise>
+        </ray>
+        <!-- PX4 原廠寫 always_on 0（沒人訂閱就不算，省 GPU）。
+             這裡改成 1 是為了讓 gz topic -l 一開機就看得到，驗證比較直接；
+             之後三機同時跑覺得卡的話，這行是第一個該關掉的。 -->
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>false</visualize>
+      </sensor>
+    </link>
+    <joint name="LidarJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>lidar_link</child>
+    </joint>
+  </model>
+</sdf>

@@ -20,8 +20,10 @@ ROS 2 Humble + PX4 SITL 的**場地與地圖套件**。
 | 拓樸地圖是什麼、怎麼決定路線 | [3 拓樸地圖](#3-拓樸地圖) |
 | 怎麼證明這張地圖是對的 | [4 三層驗證 T1 T2 T3](#4-三層驗證-t1-t2-t3) |
 | **我要在自己電腦上跑一次** | [5 在自己電腦上驗證](#5-在自己電腦上驗證) |
-| 檔案在哪、改地圖要動哪個檔 | [6 檔案結構](#6-檔案結構) |
-| 有什麼坑 | [7 踩過的雷](#7-踩過的雷) |
+| 無人機身上有哪些感測器 | [6 機體 x500_nav2](#6-機體-x500_nav2) |
+| **飛行途中要看到相機畫面** | [飛行途中看兩顆相機的畫面](#飛行途中看兩顆相機的畫面) |
+| 檔案在哪、改地圖要動哪個檔 | [7 檔案結構](#7-檔案結構) |
+| 有什麼坑 | [8 踩過的雷](#8-踩過的雷) |
 
 ---
 
@@ -106,7 +108,7 @@ ROS 2 Humble + PX4 SITL 的**場地與地圖套件**。
 ### 路線是怎麼決定的
 
 - **`route_server` 在起飛前一次算完整條路線**，不是飛到每個節點才決定下一步。
-- 成本來源（兩個都要在 `route_server` 參數裡明寫，見 [7 踩過的雷](#7-踩過的雷)）：
+- 成本來源（兩個都要在 `route_server` 參數裡明寫，見 [7 踩過的雷](#8-踩過的雷)）：
   - `DistanceScorer` 讀 metadata 的 `speed_limit`：成本 = 距離 ÷ 速限
   - `PenaltyScorer` 讀 metadata 的 `penalty`：成本 += penalty
 - 本圖給北道 `speed_limit: 0.5` + `penalty: 20`，所以預設會選南道。
@@ -236,26 +238,52 @@ RViz 會開起來，應該看到：
 
 操作：左鍵拖曳轉、中鍵拖曳平移、滾輪縮放。跟 `docs/arena_preview.png` 對照。
 
-### 層級 3：T3（完整實飛，四個終端）
+### 層級 3：T3（完整實飛，五個終端）
 
 ```bash
 # 終端 1 — Gazebo + PX4 SITL
 ~/ros2_ws/src/drone_nav2_apriltag/scripts/start_arena_sitl.sh
 #   DRONES=1  只開一台（看場景時比較快）
-#   HEADLESS=1 不開 Gazebo 視窗
+#   HEADLESS=1 不開 Gazebo 視窗 —— 但相機／光達會沒有資料，見第 8 節
 
 # 終端 2 — Micro XRCE-DDS Agent
 MicroXRCEAgent udp4 -p 8888
 
-# 終端 3 — RViz（等終端 1 印出「就緒」再開）
+# 終端 3 — 相機／光達橋接 + 兩個影像視窗（要看畫面才需要）
+ros2 launch drone_nav2_apriltag cameras.launch.py
+
+# 終端 4 — RViz（等終端 1 印出「就緒」再開）
 ros2 launch drone_nav2_apriltag view_graph.launch.py px4_namespace:=/MAV1
 
-# 終端 4 — 起飛
+# 終端 5 — 起飛
 ros2 launch drone_nav2_apriltag fly_nodes.launch.py px4_namespace:=/MAV1
 ```
 
 > **`px4_namespace:=/MAV1` 兩個 launch 都要加。**
 > `start_arena_sitl.sh` 設了 `PX4_UXRCE_DDS_NS="MAV1"`，所以 topic 全部帶前綴。
+> 忘了加的話，`fly_nodes` 會一直印「等 PX4 的 VehicleLocalPosition…」然後永遠不起飛
+> —— 它訂閱的是沒有前綴的 `/fmu/out/...`，那個 topic 根本不存在。
+
+### 飛行途中看兩顆相機的畫面
+
+終端 3 的 `cameras.launch.py` 會做兩件事：把 Gazebo 的感測器橋到 ROS 2，
+然後開兩個 `rqt_image_view` 視窗（前視一個、下視一個）。
+
+| ROS topic | 內容 |
+|---|---|
+| `/MAV1/camera_front/image_raw` | 前視相機 |
+| `/MAV1/camera_down/image_raw` | 下視相機（降落時看得到 AprilTag） |
+| `/MAV1/camera_{front,down}/camera_info` | 內參，之後 `apriltag_ros` 要用 |
+| `/MAV1/scan` | 2D 光達 |
+
+```bash
+ros2 launch drone_nav2_apriltag cameras.launch.py view:=false   # 只橋接、不開視窗
+ros2 launch drone_nav2_apriltag cameras.launch.py drone_id:=1 namespace:=MAV2
+```
+
+**想擠在同一個視窗**：`rviz/arena.rviz` 裡已經放好兩個 Image display，
+所以終端 4 的 RViz 右側會直接出現兩顆相機的畫面，跟地圖、拓樸圖、無人機位置同框。
+（RViz 那兩個 display 訂的就是上表前兩個 topic，所以終端 3 還是要開。）
 
 預期輸出：
 
@@ -302,7 +330,59 @@ ros2 launch ... fly_nodes.launch.py px4_namespace:=/MAV1 use_route_server:=false
 
 ---
 
-## 6 檔案結構
+## 6 機體 x500_nav2
+
+`gz/models/x500_nav2/` —— **x500 + 前視相機 + 下視相機 + 2D 光達**。
+
+PX4 內建的機體每台只帶一種感測器（`x500_mono_cam` 前相機、`x500_mono_cam_down`
+下相機、`x500_lidar_2d` 光達），**沒有任何一台同時具備我們要的三樣**，所以自製一台。
+
+| 感測器 | link | gz topic | 掛點（相對模型原點） | 規格 |
+|---|---|---|---|---|
+| 前視相機 | `camera_front_link` | `/MAV1/camera_front/image_raw` | `0.12  0  0.242` | 1280×960, FOV 1.74 rad, 30 Hz |
+| 下視相機 | `camera_down_link` | `/MAV1/camera_down/image_raw` | `0  0  0.10`，pitch 1.5707 | 同上 |
+| 2D 光達 | `lidar_link` | `/MAV1/scan` | `0.12  0  0.26` | 1080 點, ±135°, 0.1–30 m, 30 Hz |
+
+（表中是 `cameras.launch.py` 橋接後的 ROS topic。Gazebo 那邊是自動生成的長名字
+`/world/<世界>/model/x500_nav2_<i>/link/<link>/sensor/<sensor>/image` —— model.sdf 裡
+**刻意不寫 `<topic>`**，寫死的話 PX4 spawn 的三台會全部發到同一個 topic 互相蓋掉。）
+
+![x500_nav2](docs/x500_nav2.png)
+
+（上圖是用 MAV2 的前相機拍 MAV1 —— 機頂黃色那顆是光達，機身下方那根短柱吊著的小方塊
+就是下視相機，前視相機在機頭正對鏡頭的方向所以被機身擋住了。）
+
+- 座標基準是**模型原點**不是 `base_link`：`x500_base` 自己有 `<pose>0 0 .24</pose>`，
+  所以 `base_link` 在模型原點上方 0.24 m，腳底約在 0.013 m。這是照抄 PX4 內建機體的
+  慣例，數值才能直接沿用。
+- **飛行物理完全沒改**（四顆馬達、IMU、氣壓計、磁力計、GPS 都是 `merge-include`
+  進來的 `model://x500`），所以 PX4 機型仍然用 **4001**，不需要新的 airframe 檔。
+
+### 橋到 ROS 2
+
+Gazebo 走 gz-transport、ROS 2 走 DDS，是兩套不同的傳輸層，不會自動互通，
+中間一定要有轉接程序。這些都包在 `launch/cameras.launch.py` 裡了：
+
+```bash
+ros2 launch drone_nav2_apriltag cameras.launch.py
+```
+
+細節見 [飛行途中看兩顆相機的畫面](#飛行途中看兩顆相機的畫面)。
+
+### 已驗證的項目
+
+| 檢查 | 結果 |
+|---|---|
+| `gz sdf -p` 解析 | 零 warning、零 error |
+| 三個 topic 都有資料 | `/camera_front` `/camera_down` `/lidar_scan` 都發得出來，`frame_id` 正確 |
+| 光達幾何 | 停在 (−2, 0)，`wall_west` 內側面在 x=−5.75，光達前移 0.12 → 理論 3.87 m，**實測 min 3.879 m** |
+| 光達沒打到自己 | 1080 點裡**小於 0.5 m 的有 0 點**（掃描面 0.315 比槳面 0.30 高 1.5 cm） |
+| 下視相機真的朝下 | 移到 AprilTag (27, 16) 上方 3 m，**標記在畫面正中央** |
+| 前視相機真的朝前 | 同位置朝東，`wall_d_east`（x=33，6 m 外）填滿畫面 |
+
+---
+
+## 7 檔案結構
 
 ```
 drone_nav2_apriltag/
@@ -314,10 +394,13 @@ drone_nav2_apriltag/
 │   └── start_arena_sitl.sh    在這個世界跑 PX4 SITL
 ├── launch/
 │   ├── view_graph.launch.py   T2
-│   └── fly_nodes.launch.py    T3（含 route_server + lifecycle_manager）
+│   ├── fly_nodes.launch.py    T3（含 route_server + lifecycle_manager）
+│   └── cameras.launch.py      相機／光達橋到 ROS 2 + 開影像視窗
 ├── gz/
 │   ├── worlds/nav2_arena.sdf          ← 產生的，不要手改
-│   └── models/apriltag_36h11/         真正的 36h11 貼圖
+│   └── models/
+│       ├── apriltag_36h11/            真正的 36h11 貼圖
+│       └── x500_nav2/                 x500 + 前相機 + 下相機 + 2D 光達（手寫）
 ├── graphs/nav2_arena.geojson          ← 產生的，不要手改
 ├── docs/arena_preview.png             ← 產生的
 └── rviz/arena.rviz
@@ -344,7 +427,7 @@ cd ~/ros2_ws && colcon build --packages-select drone_nav2_apriltag
 
 ---
 
-## 7 踩過的雷
+## 8 踩過的雷
 
 - **PX4 內建的 `arucotag` 不是 AprilTag。**
   它是 ArUco 標記，`apriltag_ros` 預設解 36h11，兩者是不同的編碼字典。
@@ -370,11 +453,35 @@ cd ~/ros2_ws && colcon build --packages-select drone_nav2_apriltag
   不設的話，先開節點再開 RViz 就什麼都看不到。`rviz/arena.rviz` 已經設好，
   但手動加 display 的話要自己改（預設是 `Volatile`）。
 
-- **`PX4_GZ_MODELS` 不能改成自己的目錄。**
-  `px4-rc.gzsim` 是 `file://${PX4_GZ_MODELS}/${MODEL_NAME}/model.sdf`，
-  **寫死單一目錄不是搜尋路徑**，改掉 `x500` 就找不到了。
-  自製模型只能靠 `GZ_SIM_RESOURCE_PATH` 進來。
+- **自製「機體」跟自製「場景物件」走的是兩條不同的路。**
+  場景物件（`apriltag_36h11`）靠 `GZ_SIM_RESOURCE_PATH`；
+  但機體是 `px4-rc.gzsim:137` 的 `file://${PX4_GZ_MODELS}/${MODEL_NAME}/model.sdf`，
+  **寫死單一目錄、不吃搜尋路徑**，所以自製機體必須整個覆蓋 `PX4_GZ_MODELS`。
+  覆蓋掉不會讓 `x500` 消失 —— `gz_env.sh` 最後一行
+  `GZ_SIM_RESOURCE_PATH=...:$PX4_GZ_MODELS:...` 在 source 當下就把 PX4 的模型目錄
+  烤進搜尋路徑了，`<uri>model://x500</uri>` 照樣解析得到。
+  （這頁先前寫「`PX4_GZ_MODELS` 不能改」是錯的，已更正。）
   另外 `PX4_GZ_WORLDS` 要在 `source gz_env.sh` **之後**才覆蓋，順序反了會被蓋掉。
+
+- **`PX4_GZ_MODEL` 這個環境變數自 v1.15 起已廢棄，設了完全沒有作用。**
+  整個 PX4 原始碼都不再讀它（只剩 `docs/en/sim_gazebo_gz/index.md:267` 的說明）。
+  以前寫 `PX4_GZ_MODEL=x500` 之所以會出 x500，純粹是因為
+  `airframes/4001_gz_x500` 裡的預設值 `PX4_SIM_MODEL=${PX4_SIM_MODEL:=x500}`。
+  要換機體請設 **`PX4_SIM_MODEL`**。
+
+- **同一個模型不能 `<include merge='true'>` 兩次，`<name>` 不會幫你改 link 名。**
+  想把 `model://mono_cam` 掛前後各一顆時，兩個 link 都會叫 `camera_link`：
+  ```
+  Warning [Utils.cc:115] Non-unique name[camera_link] detected 2 times
+  ```
+  而且**只是 warning，模型照樣載入**，之後 TF 與 gz-ros bridge 抓到錯的 link，
+  症狀極難查。解法是把 link 展開寫進自製模型、各自命名（見 `x500_nav2/model.sdf`）。
+
+- **HEADLESS=1 時相機與光達不會有任何資料。**
+  無視窗模式下 EGL 起不來（`libEGL warning: egl: failed to create dri2 screen`），
+  `gz-sim-sensors-system` 建不出算繪引擎，於是**相機／光達 topic 根本不會出現**，
+  但 IMU、GPS、氣壓計這些非算繪感測器照常運作，所以很容易誤以為是模型寫錯。
+  要驗證感測器就不要加 `HEADLESS=1`。
 
 - **rclpy 的 timer callback 裡不要呼叫 `rclpy.shutdown()`。**
   `spin()` 會卡住不返回，程序印完「結束」還是不退出。
