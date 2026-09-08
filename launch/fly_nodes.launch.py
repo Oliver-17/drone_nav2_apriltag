@@ -47,6 +47,12 @@ def generate_launch_description():
                               description="多機時是 instance+1"),
         DeclareLaunchArgument("use_route_server", default_value="true",
                               description="false 就改用 node_sequence 手動指定順序（T3a）"),
+        # 預設 true = 維持原本行為（到終點就送 NAV_LAND 自己降）。
+        # 設 false 的話飛完最後一個節點會停在原地、fly_nodes 退出，控制權交出去
+        # —— 給 drone_apriltag_landing 那種「到了之後換別人接手」的流程用。
+        DeclareLaunchArgument("land_at_goal", default_value="true",
+                              description="true 到終點直接降落；"
+                                          "false 停在原地並退出，把控制權交給別人"),
     ]
 
     graph = LaunchConfiguration("graph")
@@ -107,6 +113,7 @@ def generate_launch_description():
             "px4_namespace": LaunchConfiguration("px4_namespace"),
             "target_system": LaunchConfiguration("target_system"),
             "use_route_server": LaunchConfiguration("use_route_server"),
+            "land_at_goal": LaunchConfiguration("land_at_goal"),
         }],
     )
 
