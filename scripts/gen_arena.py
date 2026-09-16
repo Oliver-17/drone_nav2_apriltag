@@ -113,9 +113,38 @@ LANDING_OPERATION = {
 PKG_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def stable_seed(*parts):
+    s = 2166136261
+    for part in parts:
+        for ch in str(part):
+            s ^= ord(ch)
+            s = (s * 16777619) & 0xFFFFFFFF
+    return s
+
+
+def feature_color(seed):
+    palette = [
+        (0.02, 0.02, 0.02),
+        (0.97, 0.97, 0.97),
+        (0.02, 0.28, 0.95),
+        (0.95, 0.62, 0.02),
+        (0.02, 0.68, 0.28),
+        (0.82, 0.04, 0.12),
+        (0.55, 0.12, 0.88),
+        (0.00, 0.72, 0.72),
+    ]
+    return palette[seed % len(palette)]
+
+
+def wall_texture_xml(name, sx, sy):
+    """Return no extra wall markers; keep walls geometrically simple."""
+    return ""
+
+
 def wall_model_xml(name, cx, cy, sx, sy, yaw_deg, note):
     yaw = math.radians(yaw_deg)
     size = f"{sx} {sy} {WALL_HEIGHT}"
+    texture = wall_texture_xml(name, sx, sy)
     return f"""
     <!-- {note} -->
     <model name="{name}">
@@ -132,10 +161,25 @@ def wall_model_xml(name, cx, cy, sx, sy, yaw_deg, note):
             <diffuse>0.65 0.65 0.7 1</diffuse>
             <specular>0.2 0.2 0.2 1</specular>
           </material>
-        </visual>
+        </visual>{texture}
       </link>
     </model>
 """
+
+
+def floor_feature_rects():
+    return [
+        (-4.5, -2.0, -9.0, 9.0),
+        (-2.0, 15.5, 2.3, 9.2),
+        (-2.0, 15.5, -9.2, -2.3),
+        (11.5, 19.0, -7.5, 1.8),
+        (20.5, 32.0, 10.5, 21.0),
+    ]
+
+
+def floor_texture_xml():
+    """Return no extra floor markers; keep the floor as a plain plane."""
+    return ""
 
 
 def bounds():
@@ -239,7 +283,7 @@ def write_world():
 
     <!-- ===== 牆 ===== -->"""
 
-    body = "".join(wall_model_xml(*w) for w in WALLS)
+    body = floor_texture_xml() + "".join(wall_model_xml(*w) for w in WALLS)
 
     footer = f"""
     <!-- ===== 降落標記 =====
@@ -334,14 +378,17 @@ def report_clearance():
 
 
 def write_preview():
+    if os.environ.get("ARENA_WRITE_PREVIEW", "0").lower() not in ("1", "true", "yes", "on"):
+        print("（跳過俯視預覽圖。若要產生，設定 ARENA_WRITE_PREVIEW=1）")
+        return None
     try:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         from matplotlib.patches import Rectangle
         from matplotlib.transforms import Affine2D
-    except ImportError:
-        print("（沒裝 matplotlib，跳過俯視圖。要的話： pip3 install matplotlib）")
+    except Exception as e:
+        print(f"（matplotlib 無法使用，跳過俯視圖：{e}）")
         return None
 
     fig, ax = plt.subplots(figsize=(12, 10))

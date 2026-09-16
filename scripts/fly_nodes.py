@@ -39,6 +39,7 @@
 import json
 import math
 import os
+import subprocess
 import sys
 
 import rclpy
@@ -58,6 +59,8 @@ S_WARMUP = "WARMUP"            # 先把 setpoint 串流跑起來
 S_ARMING = "ARMING"            # 切 offboard + 解鎖
 S_TAKEOFF = "TAKEOFF"          # 爬升到巡航高度
 S_FLY = "FLY"                  # 依序飛節點
+S_YAW_SCAN = "YAW_SCAN"        # 到指定節點後原地旋轉掃描
+S_TURN_SETTLE = "TURN_SETTLE"  # 轉彎節點先停住對準下一段再走
 S_LANDING = "LANDING"          # 交給 PX4 自動降落
 S_DONE = "DONE"
 S_ABORT = "ABORT"
@@ -84,10 +87,28 @@ class FlyNodes(Node):
         self.node_sequence = list(p("node_sequence", [0]).value)  # 上面設 False 時才用
         self.flight_altitude = p("flight_altitude", 3.0).value
         self.arrival_radius = p("arrival_radius", 1.0).value
+        self.cruise_speed = float(p("cruise_speed", 0.3).value)
+        self.turn_slow_speed = float(p("turn_slow_speed", 0.12).value)
+        self.turn_slow_radius = float(p("turn_slow_radius", 2.0).value)
+        self.turn_angle_threshold = math.radians(float(p("turn_angle_threshold_deg", 20.0).value))
+        self.turn_settle_time = max(0.0, float(p("turn_settle_time", 0.0).value))
         self.hold_time = p("hold_time", 1.0).value
         self.leg_timeout = p("leg_timeout", 60.0).value     # 單段逾時就中止
         self.face_travel = p("face_travel_direction", True).value
         self.land_at_goal = p("land_at_goal", True).value
+        self.scan_yaw_nodes = {
+            int(n) for n in p("scan_yaw_nodes", [-1]).value if int(n) >= 0
+        }
+        self.scan_yaw_speed = math.radians(float(p("scan_yaw_speed_deg_s", 18.0).value))
+        self.scan_yaw_turns = max(0.0, float(p("scan_yaw_turns", 1.0).value))
+        self.scan_yaw_hold_time = max(0.0, float(p("scan_yaw_hold_time", 0.5).value))
+        self.save_map_nodes = {
+            int(n) for n in p("save_map_nodes", [-1]).value if int(n) >= 0
+        }
+        self.save_map_file = str(
+            p("save_map_file", "/home/zhg/ncrl_mqtt/maps/arena").value
+        )
+        self.saved_map_nodes = set()
         # 起飛點在世界座標裡的位置。PX4 的 local NED 原點是 EKF 初始化時
         # 飛機所在的位置，也就是 spawn 點。預設用起點節點的座標，
         # 因為 start_arena_sitl.sh 就是把飛機 spawn 在那裡。
@@ -144,6 +165,19 @@ class FlyNodes(Node):
         self.leg = 0                   # 現在飛第幾段
         self.ticks = 0                 # 進入目前狀態之後過了幾個 tick
         self.hold_ticks = 0
+        self.command_x = None
+        self.command_y = None
+        self.scan_node = None
+        self.scan_x = None
+        self.scan_y = None
+        self.scan_total_ticks = 0
+        self.scan_hold_total_ticks = 0
+        self.turn_settle_node = None
+        self.turn_settle_x = None
+        self.turn_settle_y = None
+        self.turn_settle_yaw = float("nan")
+        self.turn_settle_total_ticks = 0
+        self.scanned_nodes = set()
         self.state = S_WAIT_ROUTE if self.use_route_server else S_WAIT_FCU
         self.route_requested = False
         self.was_offboard = False      # 用來偵測「被失效保護踢出 offboard」
@@ -205,6 +239,19 @@ class FlyNodes(Node):
                                f"({self.origin_x}, {self.origin_y})")
         self.get_logger().info(f"  巡航高度   : {self.flight_altitude} m")
         self.get_logger().info(f"  到達半徑   : {self.arrival_radius} m")
+        self.get_logger().info(f"  移動速度   : {self.cruise_speed} m/s")
+        self.get_logger().info(f"  轉彎降速   : {self.turn_slow_speed} m/s within {self.turn_slow_radius} m")
+        if self.turn_settle_time > 0.0:
+            self.get_logger().info(f"  轉彎等待   : {self.turn_settle_time:.1f} s")
+        if self.scan_yaw_nodes:
+            self.get_logger().info(
+                "  原地掃描節點 : "
+                + ", ".join(str(n) for n in sorted(self.scan_yaw_nodes))
+                + f" / {self.scan_yaw_turns:.1f} turn @ "
+                + f"{math.degrees(self.scan_yaw_speed):.1f} deg/s")
+        if self.save_map_nodes:
+            self.get_logger().info(
+                "  存圖節點   : " + ", ".join(str(n) for n in sorted(self.save_map_nodes)))
         self.get_logger().info(f"  PX4 namespace / target_system : "
                                f"'{self.px4_ns}' / {self.target_system}")
         self.get_logger().info("=" * 60)
@@ -257,7 +304,7 @@ class FlyNodes(Node):
         m.timestamp = self.now_us()
         self.pub_ocm.publish(m)
 
-    def publish_setpoint(self, ned_x, ned_y, ned_z, yaw=float("nan")):
+    def publish_setpoint(self, ned_x, ned_y, ned_z, yaw=float("nan"), yawspeed=float("nan")):
         m = TrajectorySetpoint()
         m.position = [float(ned_x), float(ned_y), float(ned_z)]
         # NaN 代表「這一項不要控制」。速度/加速度留 NaN，
@@ -265,7 +312,7 @@ class FlyNodes(Node):
         m.velocity = [float("nan")] * 3
         m.acceleration = [float("nan")] * 3
         m.yaw = float(yaw)
-        m.yawspeed = float("nan")
+        m.yawspeed = float(yawspeed)
         m.timestamp = self.now_us()
         self.pub_sp.publish(m)
 
@@ -362,13 +409,13 @@ class FlyNodes(Node):
 
         # 從這裡開始，每一個 tick 都必須發 offboard_control_mode + setpoint。
         # 斷流超過大約 0.5 秒 PX4 就會退出 offboard。
-        if self.state in (S_WARMUP, S_ARMING, S_TAKEOFF, S_FLY):
+        if self.state in (S_WARMUP, S_ARMING, S_TAKEOFF, S_FLY, S_YAW_SCAN, S_TURN_SETTLE):
             self._publish_current_setpoint()
 
         # 失效保護偵測：已經進過 offboard 卻又掉出來，代表 PX4 主動接管了
         # （低電量、位置估計失效、地面站斷線…）。這時候繼續灌 setpoint 沒有意義，
         # 而且會掩蓋真正的原因，所以直接停手並把 nav_state 印出來。
-        if self.was_offboard and not self.is_offboard() and self.state in (S_TAKEOFF, S_FLY):
+        if self.was_offboard and not self.is_offboard() and self.state in (S_TAKEOFF, S_FLY, S_YAW_SCAN, S_TURN_SETTLE):
             self.get_logger().error(
                 f"被踢出 offboard！ nav_state={self.status.nav_state} "
                 f"（14 才是 OFFBOARD）。多半是失效保護觸發，去看 PX4 的 log。")
@@ -382,6 +429,8 @@ class FlyNodes(Node):
             S_ARMING: self._do_arming,
             S_TAKEOFF: self._do_takeoff,
             S_FLY: self._do_fly,
+            S_YAW_SCAN: self._do_yaw_scan,
+            S_TURN_SETTLE: self._do_turn_settle,
             S_LANDING: self._do_landing,
             S_DONE: self._do_done,
             S_ABORT: self._do_abort,
@@ -399,7 +448,66 @@ class FlyNodes(Node):
             self.publish_setpoint(sx, sy, -self.flight_altitude)
         elif self.state == S_FLY:
             tx, ty = self.enu_to_ned(*self.nodes[self.route[self.leg]])
-            self.publish_setpoint(tx, ty, -self.flight_altitude, self._yaw_to(tx, ty))
+            cx, cy = self._limited_target(tx, ty)
+            self.publish_setpoint(cx, cy, -self.flight_altitude, self._yaw_to(tx, ty))
+        elif self.state == S_YAW_SCAN:
+            # 固定在節點上，用 yawspeed 連續旋轉；不要用跳角度，避免 PX4 走最短角。
+            x = self.scan_x if self.scan_x is not None else self.pos.x
+            y = self.scan_y if self.scan_y is not None else self.pos.y
+            yawspeed = self.scan_yaw_speed if self.ticks <= self.scan_total_ticks else 0.0
+            self.publish_setpoint(x, y, -self.flight_altitude, float("nan"), yawspeed)
+        elif self.state == S_TURN_SETTLE:
+            x = self.turn_settle_x if self.turn_settle_x is not None else self.pos.x
+            y = self.turn_settle_y if self.turn_settle_y is not None else self.pos.y
+            self.publish_setpoint(x, y, -self.flight_altitude, self.turn_settle_yaw, 0.0)
+
+    def _limited_target(self, target_x, target_y):
+        if self.command_x is None or self.command_y is None:
+            self.command_x = self.pos.x
+            self.command_y = self.pos.y
+
+        dx = target_x - self.command_x
+        dy = target_y - self.command_y
+        dist = math.hypot(dx, dy)
+        speed = self._current_xy_speed(target_x, target_y)
+        max_step = max(speed, 0.05) / LOOP_HZ
+        if dist <= max_step or dist <= 1e-6:
+            self.command_x = target_x
+            self.command_y = target_y
+        else:
+            scale = max_step / dist
+            self.command_x += dx * scale
+            self.command_y += dy * scale
+        return self.command_x, self.command_y
+
+    def _current_xy_speed(self, target_x, target_y):
+        if not self._is_turning_leg():
+            return self.cruise_speed
+        if self.command_x is None or self.command_y is None:
+            return self.cruise_speed
+        if math.hypot(target_x - self.command_x, target_y - self.command_y) > self.turn_slow_radius:
+            return self.cruise_speed
+        return min(self.cruise_speed, self.turn_slow_speed)
+
+    def _is_turning_leg(self):
+        if self.state != S_FLY or self.leg <= 0 or self.leg >= len(self.route) - 1:
+            return False
+        prev_id = self.route[self.leg - 1]
+        curr_id = self.route[self.leg]
+        next_id = self.route[self.leg + 1]
+        px, py = self.enu_to_ned(*self.nodes[prev_id])
+        cx, cy = self.enu_to_ned(*self.nodes[curr_id])
+        nx, ny = self.enu_to_ned(*self.nodes[next_id])
+        v1x, v1y = cx - px, cy - py
+        v2x, v2y = nx - cx, ny - cy
+        n1 = math.hypot(v1x, v1y)
+        n2 = math.hypot(v2x, v2y)
+        if n1 < 1e-6 or n2 < 1e-6:
+            return False
+        dot = (v1x * v2x + v1y * v2y) / (n1 * n2)
+        dot = max(-1.0, min(1.0, dot))
+        angle = math.acos(dot)
+        return angle >= self.turn_angle_threshold
 
     def _yaw_to(self, ned_x, ned_y):
         """機頭朝向行進方向。NED 的 yaw 從北開始、順時針為正，
@@ -448,6 +556,8 @@ class FlyNodes(Node):
         if err < 0.5:
             self.leg = 0
             self.hold_ticks = 0
+            self.command_x = self.pos.x
+            self.command_y = self.pos.y
             self.get_logger().info(f"已到巡航高度 {self.flight_altitude} m，開始飛節點")
             self._goto(S_FLY, "爬升完成")
             return
@@ -471,11 +581,12 @@ class FlyNodes(Node):
                 self.get_logger().info(f"  ✓ 到達節點 {nid}（誤差 {d:.2f} m）")
             if self.hold_ticks >= LOOP_HZ * self.hold_time:
                 self.hold_ticks = 0
-                self.leg += 1
-                self.ticks = 0
-                if self.leg >= len(self.route):
-                    self.get_logger().info("全部節點飛完")
-                    self._goto(S_LANDING if self.land_at_goal else S_DONE, "路線完成")
+                if self._should_yaw_scan(nid):
+                    self._start_yaw_scan(nid, tx, ty)
+                elif self._should_turn_settle():
+                    self._start_turn_settle(nid, tx, ty)
+                else:
+                    self._advance_to_next_leg()
                 return
         else:
             self.hold_ticks = 0
@@ -485,6 +596,108 @@ class FlyNodes(Node):
                 f"飛往節點 {nid} 逾時（{self.leg_timeout} 秒），還差 {d:.2f} m。"
                 "可能是這一段被牆擋住了 —— 去跑 check_graph.py 看看。")
             self._goto(S_LANDING, "單段逾時")
+
+
+
+    def _should_turn_settle(self):
+        return self.turn_settle_time > 0.0 and self._is_turning_leg()
+
+    def _start_turn_settle(self, node_id, target_x, target_y):
+        next_id = self.route[self.leg + 1]
+        next_x, next_y = self.enu_to_ned(*self.nodes[next_id])
+        self.turn_settle_node = node_id
+        self.turn_settle_x = target_x
+        self.turn_settle_y = target_y
+        self.turn_settle_yaw = math.atan2(next_y - target_y, next_x - target_x)
+        self.turn_settle_total_ticks = int(math.ceil(self.turn_settle_time * LOOP_HZ))
+        self.command_x = target_x
+        self.command_y = target_y
+        self.get_logger().info(
+            f"節點 {node_id} 轉彎前停住 {self.turn_settle_time:.1f} 秒，"
+            f"先對準下一段節點 {next_id}")
+        self._goto(S_TURN_SETTLE, f"節點 {node_id} 轉彎等待")
+
+    def _do_turn_settle(self):
+        if self.ticks == 1 or self.ticks % 10 == 0:
+            self.get_logger().info(
+                f"節點 {self.turn_settle_node} 轉彎等待 "
+                f"（{self.ticks}/{self.turn_settle_total_ticks} tick）")
+        if self.ticks >= self.turn_settle_total_ticks:
+            self.get_logger().info(f"節點 {self.turn_settle_node} 轉彎等待完成")
+            self.turn_settle_node = None
+            self.turn_settle_x = None
+            self.turn_settle_y = None
+            self.turn_settle_yaw = float("nan")
+            self._advance_to_next_leg()
+
+    def _should_yaw_scan(self, node_id):
+        return node_id in self.scan_yaw_nodes and node_id not in self.scanned_nodes
+
+    def _start_yaw_scan(self, node_id, target_x, target_y):
+        speed = max(abs(self.scan_yaw_speed), math.radians(1.0))
+        self.scan_node = node_id
+        self.scan_x = target_x
+        self.scan_y = target_y
+        self.scan_total_ticks = int(math.ceil(
+            (2.0 * math.pi * self.scan_yaw_turns / speed) * LOOP_HZ))
+        self.scan_hold_total_ticks = int(math.ceil(self.scan_yaw_hold_time * LOOP_HZ))
+        self.command_x = target_x
+        self.command_y = target_y
+        self.get_logger().info(
+            f"節點 {node_id} 原地旋轉掃描 "
+            f"{self.scan_yaw_turns:.1f} 圈，速度 {math.degrees(speed):.1f} deg/s")
+        self._goto(S_YAW_SCAN, f"節點 {node_id} 掃描")
+
+    def _do_yaw_scan(self):
+        rotate_done = self.ticks >= self.scan_total_ticks
+        total_done = self.ticks >= self.scan_total_ticks + self.scan_hold_total_ticks
+        if self.ticks == 1 or self.ticks % 20 == 0:
+            phase = "停住收斂" if rotate_done else "旋轉中"
+            self.get_logger().info(
+                f"節點 {self.scan_node} 原地掃描 {phase} "
+                f"（{self.ticks}/{self.scan_total_ticks + self.scan_hold_total_ticks} tick）")
+        if total_done:
+            node_id = self.scan_node
+            self.scanned_nodes.add(node_id)
+            self.get_logger().info(f"節點 {node_id} 原地掃描完成")
+            self._maybe_save_map(node_id)
+            self.scan_node = None
+            self.scan_x = None
+            self.scan_y = None
+            self._advance_to_next_leg()
+
+    def _maybe_save_map(self, node_id):
+        if node_id not in self.save_map_nodes or node_id in self.saved_map_nodes:
+            return
+        filename = os.path.abspath(os.path.expanduser(self.save_map_file))
+        out_dir = os.path.dirname(filename)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        cmd = [
+            'ros2',
+            'run',
+            'nav2_map_server',
+            'map_saver_cli',
+            '-f',
+            filename,
+        ]
+        self.get_logger().info(f"節點 {node_id} 觸發 Nav2 map_saver 存圖: {filename}")
+        try:
+            subprocess.Popen(cmd)
+            self.saved_map_nodes.add(node_id)
+        except OSError as exc:
+            self.get_logger().error(f"啟動存圖指令失敗: {exc}")
+
+    def _advance_to_next_leg(self):
+        self.leg += 1
+        self.command_x = self.pos.x
+        self.command_y = self.pos.y
+        self.ticks = 0
+        if self.leg >= len(self.route):
+            self.get_logger().info("全部節點飛完")
+            self._goto(S_LANDING if self.land_at_goal else S_DONE, "路線完成")
+        else:
+            self._goto(S_FLY, "前往下一節點")
 
     def _do_landing(self):
         # 不自己算下降的 setpoint，送 NAV_LAND 交給 PX4 —— 它有著陸偵測，

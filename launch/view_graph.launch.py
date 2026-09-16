@@ -35,7 +35,7 @@ def generate_launch_description():
                                                          "nav2_arena.geojson")),
         DeclareLaunchArgument("frame_id", default_value="map"),
         DeclareLaunchArgument("rviz", default_value="true"),
-        DeclareLaunchArgument("px4_namespace", default_value="",
+        DeclareLaunchArgument("px4_namespace", default_value="/MAV1",
                               description="多機時填 /MAV1 這種；要看無人機就一定要填"),
         DeclareLaunchArgument("track_vehicle", default_value="true",
                               description="false = 只畫地圖，不訂閱 PX4"),
