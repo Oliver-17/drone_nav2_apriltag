@@ -5,7 +5,7 @@ find_package(ament_cmake REQUIRED)
 
 # 為什麼把 gz/ 整包裝進 share：Gazebo 是透過 GZ_SIM_RESOURCE_PATH 找 world 與 model 的，
 # 目錄結構必須原封不動保留（model://apriltag_36h11 會展開成 <某個路徑>/apriltag_36h11/model.sdf）。
-install(DIRECTORY gz graphs launch docs rviz config
+install(DIRECTORY gz graphs launch docs rviz config maps
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -24,6 +24,10 @@ install(PROGRAMS
   scripts/check_slam_inputs.py
   scripts/check_yaw_topics.py
   scripts/gz_pose_tf_debug.py
+  scripts/cmd_vel_to_px4.py
+  scripts/frame_conversions.py
+  scripts/takeoff_manual_nav2.py
+  scripts/manual_nav2_goal_terminal.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

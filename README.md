@@ -219,6 +219,73 @@ ros2 launch drone_nav2_apriltag fly_nodes_apriltag_route.launch.py \
 | `scan_yaw_turns` | `1.0` | Number of yaw rotations at node 10 |
 | `save_map_file` | `/home/zhg/ncrl_mqtt/maps/arena` | Output prefix for `map_saver_cli` |
 
+## Empty World Nav2 Test
+
+For a simple Nav2 test without Cartographer, start PX4/Gazebo with the empty world:
+
+```bash
+cd /home/zhg/ncrl_mqtt/catkin_ws/src/drone_nav2_apriltag/scripts
+PX4_GZ_WORLD=empty_nav2 DRONES=1 ./start_arena_sitl.sh
+```
+
+Start the XRCE-DDS agent in another terminal:
+
+```bash
+MicroXRCEAgent udp4 -p 8888
+```
+
+Then start Nav2 from the workspace:
+
+```bash
+cd /home/zhg/ncrl_mqtt/catkin_ws
+source install/setup.bash
+ros2 launch drone_nav2_apriltag nav2_empty_world.launch.py
+```
+
+This launch uses the empty static map, publishes a temporary static `map -> odom`, and starts the PX4 odometry converter with `publish_tf:=true` so Nav2 can see `map -> odom -> base_link`. Remove the static `map -> odom` when Cartographer or another localization source publishes it.
+
+Start the Nav2-to-PX4 velocity bridge:
+
+```bash
+ros2 launch drone_nav2_apriltag px4_nav2_bridge.launch.py
+```
+
+Send a simple goal:
+
+```bash
+ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
+"{pose: {header: {frame_id: map}, pose: {position: {x: 5.0, y: 0.0, z: 0.0}, orientation: {w: 1.0}}}}"
+```
+
+## Manual Takeoff + Nav2 Flight
+
+This flow keeps the existing takeoff tools untouched and uses a new node, `takeoff_manual_nav2.py`. It takes off to a fixed altitude, waits for manual start/goal input, publishes `map -> odom` from the entered start pose, sends a Nav2 goal, and converts Nav2 `/cmd_vel` to PX4 offboard setpoints.
+
+Start PX4/Gazebo first, then launch the combined Nav2 flight flow:
+
+```bash
+cd /home/zhg/ncrl_mqtt/catkin_ws
+source install/setup.bash
+ros2 launch drone_nav2_apriltag manual_nav2_flight.launch.py
+```
+
+After takeoff, open another terminal and publish the poses:
+
+```bash
+cd /home/zhg/ncrl_mqtt/catkin_ws
+source install/setup.bash
+ros2 run drone_nav2_apriltag manual_nav2_goal_terminal.py
+```
+
+Then enter:
+
+```text
+start> 0 0 0  # east north yaw_deg
+goal> 5 0 0  # east north yaw_deg
+```
+
+The format is `east north yaw_deg` in the ENU `map` frame. PX4 setpoints are converted to NED automatically. Do not run another static `map -> odom` publisher with this launch, because this node publishes `map -> odom` from the manual start pose.
+
 ## Diagnostics
 
 Check SLAM inputs:

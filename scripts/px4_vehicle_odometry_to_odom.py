@@ -9,6 +9,7 @@ import math
 import sys
 
 import rclpy
+from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 from px4_msgs.msg import VehicleOdometry
 from rclpy.node import Node
@@ -18,6 +19,7 @@ from rclpy.qos import (
     QoSProfile,
     QoSReliabilityPolicy,
 )
+from tf2_ros import TransformBroadcaster
 
 
 class Px4VehicleOdometryToOdom(Node):
@@ -29,12 +31,16 @@ class Px4VehicleOdometryToOdom(Node):
         self.declare_parameter('odom_frame_id', 'odom')
         self.declare_parameter('child_frame_id', 'base_link')
         self.declare_parameter('queue_size', 30)
+        self.declare_parameter('publish_tf', False)
+        self.declare_parameter('stamp_with_ros_time', False)
 
         input_topic = self.get_parameter('input_topic').value
         output_topic = self.get_parameter('output_topic').value
         self.odom_frame_id = self.get_parameter('odom_frame_id').value
         self.child_frame_id = self.get_parameter('child_frame_id').value
         queue_size = int(self.get_parameter('queue_size').value)
+        self.publish_tf = bool(self.get_parameter('publish_tf').value)
+        self.stamp_with_ros_time = bool(self.get_parameter('stamp_with_ros_time').value)
 
         sub_qos = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -45,6 +51,7 @@ class Px4VehicleOdometryToOdom(Node):
         pub_qos = QoSProfile(history=QoSHistoryPolicy.KEEP_LAST, depth=queue_size)
 
         self.publisher = self.create_publisher(Odometry, output_topic, pub_qos)
+        self.tf_broadcaster = TransformBroadcaster(self) if self.publish_tf else None
         self.subscription = self.create_subscription(VehicleOdometry, input_topic, self.convert, sub_qos)
 
         self.get_logger().info(
@@ -57,9 +64,12 @@ class Px4VehicleOdometryToOdom(Node):
             return
 
         out = Odometry()
-        stamp_us = int(msg.timestamp_sample or msg.timestamp)
-        out.header.stamp.sec = stamp_us // 1000000
-        out.header.stamp.nanosec = (stamp_us % 1000000) * 1000
+        if self.stamp_with_ros_time:
+            out.header.stamp = self.get_clock().now().to_msg()
+        else:
+            stamp_us = int(msg.timestamp_sample or msg.timestamp)
+            out.header.stamp.sec = stamp_us // 1000000
+            out.header.stamp.nanosec = (stamp_us % 1000000) * 1000
         out.header.frame_id = self.odom_frame_id
         out.child_frame_id = self.child_frame_id
 
@@ -91,6 +101,15 @@ class Px4VehicleOdometryToOdom(Node):
 
         self._fill_covariance(out, msg)
         self.publisher.publish(out)
+        if self.tf_broadcaster is not None:
+            tf = TransformStamped()
+            tf.header = out.header
+            tf.child_frame_id = out.child_frame_id
+            tf.transform.translation.x = out.pose.pose.position.x
+            tf.transform.translation.y = out.pose.pose.position.y
+            tf.transform.translation.z = out.pose.pose.position.z
+            tf.transform.rotation = out.pose.pose.orientation
+            self.tf_broadcaster.sendTransform(tf)
 
     @staticmethod
     def _fill_covariance(out, msg):

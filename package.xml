@@ -31,6 +31,11 @@
   <!-- T3b：讀 route_server 的規劃結果、發 PX4 的 offboard setpoint -->
   <exec_depend>nav2_msgs</exec_depend>
   <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>nav2_bt_navigator</exec_depend>
+  <exec_depend>nav2_controller</exec_depend>
+  <exec_depend>nav2_planner</exec_depend>
+  <exec_depend>nav2_behaviors</exec_depend>
   <exec_depend>nav2_map_server</exec_depend>
   <exec_depend>px4_msgs</exec_depend>
   <!-- 把 x500_nav2 的相機／光達從 Gazebo 橋到 ROS 2 -->

@@ -9,6 +9,7 @@
 #  用法：
 #      ./start_arena_sitl.sh              # 三台，有視窗
 #      DRONES=1 ./start_arena_sitl.sh     # 只開一台（純看場景時比較快）
+#      PX4_GZ_WORLD=empty_nav2 DRONES=1 ./start_arena_sitl.sh  # 空白世界
 #      START_NODE=1 DRONES=1 ./start_arena_sitl.sh  # 第一台生在拓樸節點 1
 #      START_POSE=0,5 DRONES=1 ./start_arena_sitl.sh # 直接指定第一台 ENU 起始位置
 #      HEADLESS=1 ./start_arena_sitl.sh   # 無視窗
@@ -108,7 +109,8 @@ source "$BUILD_DIR/rootfs/gz_env.sh"
 
 # px4-rc.gzsim:51 組出來的路徑是 "${PX4_GZ_WORLDS}/${PX4_GZ_WORLD}.sdf"
 export PX4_GZ_WORLDS="$PKG_DIR/gz/worlds"
-export PX4_GZ_WORLD=nav2_arena
+PX4_GZ_WORLD="${PX4_GZ_WORLD:-${WORLD:-nav2_arena}}"
+export PX4_GZ_WORLD
 
 # 本套件的模型（apriltag_36h11、x500_nav2）要讓 Gazebo 能展開 model:// URI。
 export GZ_SIM_RESOURCE_PATH="$PKG_DIR/gz/models:$GZ_SIM_RESOURCE_PATH"
@@ -151,7 +153,11 @@ case "$START_NODE" in
         ;;
 esac
 if [ -z "$START_POSE" ]; then
-    START_POSE="$NODE_START_POSE"
+    if [ "$PX4_GZ_WORLD" = "empty_nav2" ]; then
+        START_POSE="0,0"
+    else
+        START_POSE="$NODE_START_POSE"
+    fi
 fi
 POSES[0]="$START_POSE"
 
@@ -179,7 +185,7 @@ wait_for() {
     return 0
 }
 
-world_is_up()       { gz topic -l 2>/dev/null | grep -qE "/world/nav2_arena/clock"; }
+world_is_up()       { gz topic -l 2>/dev/null | grep -qE "/world/${PX4_GZ_WORLD}/clock"; }
 instance_is_ready() { grep -q "uxrce_dds_client.*vehicle_local_position" "$1"; }
 
 # 「就緒」的判斷是 uxrce_dds_client 有沒有把 vehicle_local_position 註冊出去，
@@ -203,6 +209,8 @@ fix_preflight_params() {
     local param="$BUILD_DIR/bin/px4-param"
     "$param" --instance "$i" set NAV_DLL_ACT 0          >/dev/null 2>&1 || return 1
     "$param" --instance "$i" set CBRK_SUPPLY_CHK 894281 >/dev/null 2>&1 || return 1
+    "" --instance "" set SYS_HAS_BARO 0        >/dev/null 2>&1 || return 1
+    "" --instance "" set SYS_HAS_MAG 0         >/dev/null 2>&1 || return 1
     
 
     "$param" --instance "$i" save                       >/dev/null 2>&1 || return 1
