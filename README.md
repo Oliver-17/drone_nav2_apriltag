@@ -219,57 +219,87 @@ ros2 launch drone_nav2_apriltag fly_nodes_apriltag_route.launch.py \
 | `scan_yaw_turns` | `1.0` | Number of yaw rotations at node 10 |
 | `save_map_file` | `/home/zhg/ncrl_mqtt/maps/arena` | Output prefix for `map_saver_cli` |
 
-## Empty World Nav2 Test
+## Empty World Nav2 Manual Flight Test
 
-For a simple Nav2 test without Cartographer, start PX4/Gazebo with the empty world:
+This flow is for testing Nav2 path planning and PX4 offboard motion in an empty Gazebo world, without Cartographer or SLAM. It uses a fake empty static map, a static `map -> odom` transform, PX4 odometry as `/odom`, and manual ENU start/goal input.
+
+Current behavior:
+
+- takes off to `0.5 m`
+- waits for manual start and goal coordinates
+- sends a Nav2 `NavigateToPose` goal
+- converts Nav2 `/cmd_vel` into PX4 NED offboard setpoints
+- lands automatically after Nav2 reports the goal is finished
+- does not use camera point cloud or local obstacle avoidance in this test flow
+
+### 1. Start Micro XRCE-DDS Agent
+
+Use a separate terminal:
+
+```bash
+MicroXRCEAgent udp4 -p 8888
+```
+
+### 2. Start PX4/Gazebo Empty World
+
+Use the empty Nav2 world:
 
 ```bash
 cd /home/zhg/ncrl_mqtt/catkin_ws/src/drone_nav2_apriltag/scripts
 PX4_GZ_WORLD=empty_nav2 DRONES=1 ./start_arena_sitl.sh
 ```
 
-Start the XRCE-DDS agent in another terminal:
+Before launching Nav2, confirm PX4 local position is valid:
 
 ```bash
-MicroXRCEAgent udp4 -p 8888
+source /home/zhg/ncrl_mqtt/catkin_ws/install/setup.bash
+ros2 topic echo /MAV1/fmu/out/vehicle_local_position_v1 --once
+ros2 topic echo /MAV1/fmu/out/estimator_status_flags --once
 ```
 
-Then start Nav2 from the workspace:
+For takeoff, `vehicle_local_position_v1` should have valid local position, especially:
 
-```bash
-cd /home/zhg/ncrl_mqtt/catkin_ws
-source install/setup.bash
-ros2 launch drone_nav2_apriltag nav2_empty_world.launch.py
+```text
+xy_valid: true
+z_valid: true
 ```
 
-This launch uses the empty static map, publishes a temporary static `map -> odom`, and starts the PX4 odometry converter with `publish_tf:=true` so Nav2 can see `map -> odom -> base_link`. Remove the static `map -> odom` when Cartographer or another localization source publishes it.
+If `xy_valid` is still `false`, the takeoff node will keep waiting. Check PX4/Gazebo, XRCE-DDS, GPS/magnetometer/yaw alignment, or OptiTrack/mocap input.
 
-Start the Nav2-to-PX4 velocity bridge:
+### 3. Start Manual Nav2 Flight
 
-```bash
-ros2 launch drone_nav2_apriltag px4_nav2_bridge.launch.py
-```
-
-Send a simple goal:
-
-```bash
-ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
-"{pose: {header: {frame_id: map}, pose: {position: {x: 5.0, y: 0.0, z: 0.0}, orientation: {w: 1.0}}}}"
-```
-
-## Manual Takeoff + Nav2 Flight
-
-This flow keeps the existing takeoff tools untouched and uses a new node, `takeoff_manual_nav2.py`. It takes off to a fixed altitude, waits for manual start/goal input, publishes `map -> odom` from the entered start pose, sends a Nav2 goal, and converts Nav2 `/cmd_vel` to PX4 offboard setpoints.
-
-Start PX4/Gazebo first, then launch the combined Nav2 flight flow:
+Use another terminal:
 
 ```bash
 cd /home/zhg/ncrl_mqtt/catkin_ws
 source install/setup.bash
-ros2 launch drone_nav2_apriltag manual_nav2_flight.launch.py
+ros2 launch drone_nav2_apriltag manual_nav2_flight.launch.py rviz:=true
 ```
 
-After takeoff, open another terminal and publish the poses:
+Useful launch arguments:
+
+| Argument | Default | Meaning |
+|---|---:|---|
+| `takeoff_altitude` | `0.5` | Fixed flight altitude in meters |
+| `altitude_tolerance` | `0.1` | Takeoff altitude tolerance in meters |
+| `max_xy_speed` | `0.7` | Maximum Nav2 XY velocity sent to PX4 |
+| `land_after_goal` | `true` | Send PX4 land command after Nav2 finishes |
+| `land_on_abort` | `true` | Send PX4 land command if the flow aborts while armed |
+| `rviz` | `false` | Open the included Nav2 RViz config |
+
+This launch provides the TF chain Nav2 needs:
+
+```text
+map -> odom -> base_link
+```
+
+`map -> odom` is a static identity transform for the fake empty map. `odom -> base_link` comes from PX4 `vehicle_odometry` converted to ROS `/odom`.
+
+Do not run `nav2_empty_world.launch.py` or `px4_nav2_bridge.launch.py` at the same time as `manual_nav2_flight.launch.py`; the manual launch already starts Nav2, odometry TF, and the PX4 command bridge.
+
+### 4. Enter Start and Goal Coordinates
+
+After the UAV reaches takeoff altitude and waits for input, open another terminal:
 
 ```bash
 cd /home/zhg/ncrl_mqtt/catkin_ws
@@ -277,14 +307,57 @@ source install/setup.bash
 ros2 run drone_nav2_apriltag manual_nav2_goal_terminal.py
 ```
 
-Then enter:
+Input format is ENU:
 
 ```text
-start> 0 0 0  # east north yaw_deg
-goal> 5 0 0  # east north yaw_deg
+start> east north yaw_deg
+goal> east north yaw_deg
 ```
 
-The format is `east north yaw_deg` in the ENU `map` frame. PX4 setpoints are converted to NED automatically. Do not run another static `map -> odom` publisher with this launch, because this node publishes `map -> odom` from the manual start pose.
+Example:
+
+```text
+start> 0 0 0
+goal> 2 0 0
+```
+
+The entered coordinates can be OptiTrack-style ENU coordinates. The program uses the entered start and goal to compute the relative goal from the current odometry pose. Nav2 then decides whether the UAV has arrived by continuously checking `/odom` / TF, not by the typed coordinates alone.
+
+Default Nav2 goal tolerance is:
+
+```text
+xy_goal_tolerance: 0.35 m
+yaw_goal_tolerance: 0.35 rad
+```
+
+When the UAV is within tolerance, Nav2 reports success and the takeoff/manual node sends the land command.
+
+### 5. RViz
+
+The included RViz config is:
+
+```text
+rviz/nav2_empty_local.rviz
+```
+
+It is opened automatically with `rviz:=true`, or manually with:
+
+```bash
+rviz2 -d /home/zhg/ncrl_mqtt/catkin_ws/install/drone_nav2_apriltag/share/drone_nav2_apriltag/rviz/nav2_empty_local.rviz
+```
+
+Main displays:
+
+- `/map`
+- `/global_costmap/costmap`
+- `/local_costmap/costmap`
+- `/plan`
+- `/plan_smoothed`
+- `/local_plan`
+- `/odom`
+- TF
+
+Because this test uses a fake empty map and no point-cloud obstacle layer, Gazebo obstacles are not used for avoidance in this flow. Use it to verify Nav2 planning, TF, `/cmd_vel`, PX4 offboard control, and OptiTrack/PX4 odometry feedback.
 
 ## Diagnostics
 
