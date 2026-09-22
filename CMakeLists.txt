@@ -28,6 +28,7 @@ install(PROGRAMS
   scripts/frame_conversions.py
   scripts/takeoff_manual_nav2.py
   scripts/manual_nav2_goal_terminal.py
+  scripts/mav1_nav2_topic_check.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

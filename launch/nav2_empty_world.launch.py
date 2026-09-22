@@ -21,6 +21,7 @@ def generate_launch_description():
     map_file = LaunchConfiguration("map")
     px4_odom_topic = LaunchConfiguration("px4_odom_topic")
     odom_topic = LaunchConfiguration("odom_topic")
+    stamp_with_ros_time = LaunchConfiguration("stamp_with_ros_time")
 
     return LaunchDescription([
         DeclareLaunchArgument("use_sim_time", default_value="true"),
@@ -28,6 +29,7 @@ def generate_launch_description():
         DeclareLaunchArgument("map", default_value=default_map),
         DeclareLaunchArgument("px4_odom_topic", default_value="/MAV1/fmu/out/vehicle_odometry"),
         DeclareLaunchArgument("odom_topic", default_value="/odom"),
+        DeclareLaunchArgument("stamp_with_ros_time", default_value="true"),
         Node(
             package="drone_nav2_apriltag",
             executable="px4_vehicle_odometry_to_odom.py",
@@ -38,6 +40,7 @@ def generate_launch_description():
                 "odom_frame_id": "odom",
                 "child_frame_id": "base_link",
                 "publish_tf": True,
+                "stamp_with_ros_time": stamp_with_ros_time,
                 "use_sim_time": use_sim_time,
             }],
             output="screen",

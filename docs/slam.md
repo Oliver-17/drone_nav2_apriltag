@@ -1,0 +1,229 @@
+# SLAM And Map Capture
+
+This document describes the depth-camera SLAM and AprilTag-area map capture flow.
+
+## Runtime Flow
+
+Use separate terminals so failures are easier to isolate.
+
+### 1. Start Gazebo And PX4 SITL
+
+```bash
+cd /home/zhg/ncrl_mqtt
+DRONES=1 ./scripts/start_arena_sitl.sh
+```
+
+### 2. Start Micro XRCE-DDS Agent
+
+```bash
+MicroXRCEAgent udp4 -p 8888
+```
+
+### 3. Start Camera / Depth Bridge
+
+Use the depth-image pipeline, not the native Gazebo point-cloud bridge:
+
+```bash
+cd /home/zhg/ncrl_mqtt/catkin_ws
+source install/setup.bash
+ros2 launch drone_nav2_apriltag cameras_depth_proc.launch.py
+```
+
+This publishes:
+
+```text
+/MAV1/camera_front/depth/image_raw
+/MAV1/camera_front/depth/camera_info
+/MAV1/camera_front/depth/points
+/tf_static: base_link -> camera_front_link -> camera_front_optical_frame
+```
+
+Check it:
+
+```bash
+ros2 topic echo /MAV1/camera_front/depth/points --field header --once
+ros2 topic hz /MAV1/camera_front/depth/points
+ros2 run tf2_ros tf2_echo camera_front_link camera_front_optical_frame
+```
+
+Expected point cloud frame:
+
+```text
+camera_front_optical_frame
+```
+
+The point cloud uses the optical frame convention and is transformed through TF. The Python point-cloud axis converter is not used in the recommended flow.
+
+### 4. Start Cartographer 3D SLAM
+
+```bash
+cd /home/zhg/ncrl_mqtt/catkin_ws
+source install/setup.bash
+ros2 launch drone_nav2_apriltag cartographer_3d_depth.launch.py
+```
+
+Current SLAM inputs:
+
+```text
+points2 <- /MAV1/camera_front/depth/points
+imu     <- /imu
+odom    <- /odom
+```
+
+Check services and topics:
+
+```bash
+ros2 topic echo /imu --field header --once
+ros2 topic echo /odom --field header --once
+ros2 topic echo /map --field info.resolution --once
+ros2 topic hz /map
+```
+
+### 5. Fly AprilTag Route And Save Map
+
+```bash
+cd /home/zhg/ncrl_mqtt/catkin_ws
+source install/setup.bash
+ros2 launch drone_nav2_apriltag fly_nodes_apriltag_route.launch.py
+```
+
+Default route:
+
+```text
+1 -> 4 -> 6 -> 3 -> 1 -> 3 -> 10
+```
+
+At node `10`, the UAV rotates once, saves the occupancy grid map, and finishes without landing.
+
+Default map save command is equivalent to:
+
+```bash
+ros2 run nav2_map_server map_saver_cli -f /home/zhg/ncrl_mqtt/maps/arena
+```
+
+Expected output:
+
+```text
+/home/zhg/ncrl_mqtt/maps/arena.yaml
+/home/zhg/ncrl_mqtt/maps/arena.pgm
+```
+
+Override save path:
+
+```bash
+ros2 launch drone_nav2_apriltag fly_nodes_apriltag_route.launch.py \
+  save_map_file:=/home/zhg/ncrl_mqtt/maps/test_arena
+```
+
+## Useful Launch Arguments
+
+### `cameras_depth_proc.launch.py`
+
+| Argument | Default | Meaning |
+|---|---:|---|
+| `world` | `nav2_arena` | Gazebo world name |
+| `drone_id` | `0` | PX4/Gazebo model suffix |
+| `namespace` | `MAV1` | ROS namespace for camera topics |
+| `model_prefix` | `x500_depth_nav2` | Gazebo model prefix |
+| `front_depth` | `true` | Bridge depth image/info and generate point cloud |
+| `front_rgb` | `false` | Bridge front RGB image/info |
+| `down_rgb` | `false` | Bridge downward RGB image/info |
+| `lidar` | `false` | Bridge 2D lidar |
+
+### `cartographer_3d_depth.launch.py`
+
+| Argument | Default | Meaning |
+|---|---:|---|
+| `raw_points_topic` | `/MAV1/camera_front/depth/points` | Depth point cloud input |
+| `gz_imu_topic` | `/world/nav2_arena/model/x500_depth_nav2_0/link/base_link/sensor/imu_sensor/imu` | Gazebo IMU source |
+| `imu_topic` | `/imu` | ROS IMU topic for Cartographer |
+| `px4_odom_topic` | `/MAV1/fmu/out/vehicle_odometry` | PX4 odometry source |
+| `odom_topic` | `/odom` | ROS odometry topic for Cartographer |
+
+### `fly_nodes_apriltag_route.launch.py`
+
+| Argument | Default | Meaning |
+|---|---:|---|
+| `flight_altitude` | `3.0` | Flight altitude in meters |
+| `arrival_radius` | `1.5` | Radius for considering a node reached |
+| `cruise_speed` | `0.20` | Normal XY setpoint speed |
+| `turn_slow_speed` | `0.08` | XY speed near turning nodes |
+| `turn_settle_time` | `1.5` | Stop time at turn nodes before moving again |
+| `leg_timeout` | `180.0` | Per-leg timeout in seconds |
+| `scan_yaw_speed_deg_s` | `18.0` | In-place yaw scan speed at node 10 |
+| `scan_yaw_turns` | `1.0` | Number of yaw rotations at node 10 |
+| `save_map_file` | `/home/zhg/ncrl_mqtt/maps/arena` | Output prefix for `map_saver_cli` |
+
+## Diagnostics
+
+Check SLAM inputs:
+
+```bash
+ros2 run drone_nav2_apriltag check_slam_inputs.py
+```
+
+Check yaw, topic rate, and timestamp alignment:
+
+```bash
+ros2 run drone_nav2_apriltag check_yaw_topics.py --ros-args -p use_sim_time:=true
+```
+
+Check point cloud rate:
+
+```bash
+ros2 topic hz /MAV1/camera_front/depth/points
+```
+
+Check Gazebo raw sensor rate:
+
+```bash
+gz topic -f -d 10 -t /world/nav2_arena/model/x500_depth_nav2_0/link/camera_front_link/sensor/StereoOV7251/depth_image
+```
+
+Check TF:
+
+```bash
+ros2 run tf2_ros tf2_echo base_link camera_front_optical_frame
+ros2 run tf2_ros tf2_echo map base_link
+```
+
+## Notes
+
+- Do not run `cameras.launch.py` and `cameras_depth_proc.launch.py` at the same time. They may publish the same camera topics.
+- The recommended depth pipeline bridges `depth_image` and `camera_info`, then uses `depth_image_proc` to generate `PointCloud2` in ROS.
+- Point cloud numeric axes remain in `camera_front_optical_frame`; TF handles the transform to `camera_front_link` and `base_link`.
+- Cartographer uses Gazebo IMU because the PX4 `sensor_combined` IMU was observed to be less stable for this SLAM setup.
+- PX4 odometry is used as `/odom` input to Cartographer.
+- The saved `.yaml/.pgm` map comes from `/map`, not from Cartographer `.pbstream` state.
+
+## Common Problems
+
+### Cartographer says `camera_front_optical_frame` does not exist
+
+Make sure `cameras_depth_proc.launch.py` is running, because it publishes:
+
+```text
+camera_front_link -> camera_front_optical_frame
+```
+
+### `/MAV1/camera_front/depth/points` has low or unstable rate
+
+Compare each stage:
+
+```bash
+gz topic -f -d 10 -t /world/nav2_arena/model/x500_depth_nav2_0/link/camera_front_link/sensor/StereoOV7251/depth_image
+ros2 topic hz /MAV1/camera_front/depth/image_raw
+ros2 topic hz /MAV1/camera_front/depth/points
+```
+
+If Gazebo is stable but ROS points are not, the bottleneck is likely bridge / DDS / `depth_image_proc` / CPU load.
+
+### Route stops and lands before finishing
+
+`fly_nodes.py` lands when a leg exceeds `leg_timeout`. Increase timeout or arrival radius:
+
+```bash
+ros2 launch drone_nav2_apriltag fly_nodes_apriltag_route.launch.py \
+  arrival_radius:=1.8 \
+  leg_timeout:=240.0
+```
